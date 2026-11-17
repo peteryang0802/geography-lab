@@ -1,4 +1,4 @@
-import { galleryPhoto, photoSourceUrl } from './responsive-photo.js?v=5';
+import { galleryAssetForViewport, galleryPhoto, photoSourceUrl } from './responsive-photo.js?v=7';
 
 const PHOTO_TIMEOUT_MS = 8000;
 
@@ -72,7 +72,7 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     credit.append(link(photo.title, photo.source), ' · ' + photo.author + ' · ', link(...photo.license), ' · 图片已缩放或转换格式');
     sources.append(credit);
     track.append(figure);
-    const slide = { photo, figure, image, caption, status, message, retry, failedAttempts: 0, request: 0 };
+    const slide = { photo, figure, image, status, message, retry, failedAttempts: 0, request: 0 };
     setImageState(slide, 'idle');
     image.addEventListener('load', async () => {
       const request = slide.request;
@@ -97,21 +97,16 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     slide.state = state;
     slide.figure.dataset.imageState = state;
     slide.image.style.visibility = loaded ? '' : 'hidden';
-    slide.caption.style.visibility = loaded ? '' : 'hidden';
     slide.status.hidden = loaded;
     slide.retry.hidden = !error;
     slide.message.textContent = loaded ? '' : error ? '这张照片暂时没载入。' : '照片加载中…';
   }
 
-  function resolveSizes(slide) {
-    const width = slide.figure.clientWidth;
-    const size = `${width}px`;
-    if (width > 0 && slide.image.sizes !== size) slide.image.sizes = size;
-  }
-
   function requestPhoto(target, priority, retry = false) {
     const slide = slides[target];
-    if (disposed || !slide || slide.state === 'loaded' || slide.state === 'error' && !retry) return;
+    if (disposed || !slide) return;
+    if (priority === 'high' && constrainedConnection()) cancelUnviewedRequests(target);
+    if (slide.state === 'loaded' || slide.state === 'error' && !retry) return;
     const { image, photo } = slide;
     image.loading = 'eager';
     image.fetchPriority = priority;
@@ -125,20 +120,22 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
       if (request !== slide.request || slide.state !== 'loading') return;
       slide.timedOut = true;
       finishPhoto(slide, target, 'error');
-      image.removeAttribute('srcset');
       image.removeAttribute('src');
     }, PHOTO_TIMEOUT_MS);
     const suffix = retry ? '?retry=' + Date.now() : '';
-    const imageUrl = file => photoSourceUrl(file) + suffix;
-    const descriptor = galleryPhoto(photo, { thumbnail: useThumbnail });
-    if (useThumbnail || !descriptor.variants || matchMedia('(pointer: coarse) and (max-width: 920px)').matches) {
-      image.removeAttribute('srcset');
-      image.src = imageUrl(descriptor.file);
-      return;
+    const file = useThumbnail ? galleryPhoto(photo, { thumbnail: true }).file : galleryAssetForViewport(photo);
+    image.src = photoSourceUrl(file) + suffix;
+  }
+
+  function cancelUnviewedRequests(target) {
+    for (const [position, slide] of slides.entries()) {
+      if (position === target || slide.state !== 'loading') continue;
+      slide.request++;
+      clearTimeout(slide.timeout);
+      if (backgroundIndex === position) backgroundIndex = null;
+      setImageState(slide, 'idle');
+      slide.image.removeAttribute('src');
     }
-    resolveSizes(slide);
-    image.srcset = descriptor.variants.map(([file, width]) => `${imageUrl(file)} ${width}w`).join(', ');
-    image.src = imageUrl(descriptor.file);
   }
 
   function finishPhoto(slide, photoIndex, state) {
@@ -153,15 +150,18 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
 
   function updateCaption() {
     const slide = slides[index];
-    activeCaption.textContent = slide.state === 'loaded' ? slide.photo.title + ' · ' + slide.photo.cue : '';
+    activeCaption.textContent = slide.photo.title + ' · ' + slide.photo.cue;
+  }
+
+  function constrainedConnection() {
+    const connection = navigator.connection;
+    return connection?.saveData || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType)
+      || !connection?.effectiveType && matchMedia('(pointer: coarse)').matches;
   }
 
   function schedulePrefetch() {
     clearTimeout(prefetchTimer);
-    const connection = navigator.connection;
-    const constrained = connection?.saveData || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType)
-      || !connection?.effectiveType && matchMedia('(pointer: coarse)').matches;
-    if (requestedIndex !== null || backgroundIndex !== null || document.hidden || constrained || slides[index].state !== 'loaded') return;
+    if (requestedIndex !== null || backgroundIndex !== null || document.hidden || constrainedConnection() || slides[index].state !== 'loaded') return;
     const neighbor = bound(index + direction) === index ? index - direction : index + direction;
     if (slides[neighbor]?.state !== 'idle') return;
     prefetchTimer = setTimeout(() => {
@@ -231,7 +231,6 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
   });
 
   const observer = new ResizeObserver(() => {
-    for (const slide of slides) if (slide.image.srcset) resolveSizes(slide);
     goTo(requestedIndex ?? index, true);
   });
   observer.observe(track);
@@ -242,6 +241,6 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     observer.disconnect();
     cancelAnimationFrame(frame);
     clearTimeout(prefetchTimer);
-    for (const slide of slides) clearTimeout(slide.timeout);
+    cancelUnviewedRequests(-1);
   };
 }

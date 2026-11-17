@@ -1,13 +1,38 @@
 import { contourProfile, sunlightAt, TERRAIN_SITES, TO_RADIANS } from './geo-model.js';
-import { mountFlat } from './flat.js?v=5';
+import { mountFlat } from './flat.js?v=7';
 import { fitActivityStage } from './activity-stage.js';
 import { FLOW_NOTES, getFlowPaths } from './flow-model.js';
 
 const THREE_LOAD_TIMEOUT = 7000;
-const threeRuntimeUrl = new URL('./three-runtime.js?v=1', import.meta.url);
+const threeRuntimeUrl = new URL('./three-runtime.js?v=2', import.meta.url);
 let threeRuntime;
 let pendingRuntime;
 let retryRuntime = false;
+let runtimeHint;
+
+function isFastConnection() {
+  const connection = navigator.connection;
+  return connection?.saveData === false && connection.effectiveType === '4g' &&
+    connection.downlink >= 2 && connection.rtt <= 200;
+}
+
+function canRestoreThree() {
+  const connection = navigator.connection;
+  return !connection?.saveData && !['slow-2g', '2g', '3g'].includes(connection?.effectiveType);
+}
+
+function preloadThreeRuntime() {
+  if (threeRuntime || pendingRuntime || retryRuntime || runtimeHint ||
+      !isFastConnection() || !('WebGL2RenderingContext' in window)) return;
+  const link = document.createElement('link');
+  if (!link.relList.supports('modulepreload')) return;
+  link.rel = 'modulepreload';
+  link.href = threeRuntimeUrl.href;
+  link.fetchPriority = 'low';
+  link.addEventListener('error', () => { retryRuntime = true; }, { once: true });
+  runtimeHint = link;
+  document.head.append(link);
+}
 
 function resetRuntimeRequest(request) {
   if (pendingRuntime !== request) return;
@@ -226,6 +251,9 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   let activeMode = 'flat';
   let three;
   let flat;
+  let openingContext;
+  let preloadTimer;
+  let stageObserver;
   let touchEnabled = !matchMedia('(pointer: coarse)').matches;
 
   host.innerHTML = `
@@ -433,10 +461,23 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     onChange(settings);
   }
 
+  function releaseOpeningContext() {
+    if (openingContext && !openingContext.isContextLost()) {
+      openingContext.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+    openingContext = undefined;
+  }
+
+  function stopObservingStage() {
+    clearTimeout(preloadTimer);
+    stageObserver?.disconnect();
+  }
+
   function useFlat(message, failed = false) {
     loadVersion += 1;
     clearTimeout(loadTimer);
     if (activeMode === 'three') saveCamera(three?.captureCamera());
+    releaseOpeningContext();
     three?.dispose();
     three = null;
     setMode(failed ? 'failed' : 'flat');
@@ -460,9 +501,22 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   async function useThree(focusControls = true) {
     const version = ++loadVersion;
     const isCurrent = () => !disposed && version === loadVersion;
+    stopObservingStage();
     stage.textContent = '正在打开 3D，平面图可以继续用。';
     switcher.textContent = '取消 3D';
     setMode('loading');
+    const canvas = document.createElement('canvas');
+    const antialias = !navigator.deviceMemory || navigator.deviceMemory >= 4;
+    try {
+      openingContext = canvas.getContext('webgl2', { antialias, alpha: true });
+    } catch {
+      openingContext = undefined;
+    }
+    if (!openingContext) {
+      failThree('这台设备暂时用不了 3D，可以继续用平面图。');
+      return;
+    }
+    const context = openingContext;
     const request = loadThreeRuntime();
     loadTimer = setTimeout(() => {
       if (!isCurrent()) return;
@@ -472,10 +526,13 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     try {
       const { mountScene } = await request;
       if (!isCurrent()) return;
+      if (context.isContextLost()) throw new Error('WebGL context was lost while loading');
       // Give the canvas a size while the interactive flat view stays visible.
       Object.assign(sceneHost.style, { position: 'absolute', inset: '0 auto auto 0', visibility: 'hidden' });
       sceneHost.hidden = false;
       three = mountScene(sceneHost, kind, sceneConfig(), {
+        canvas,
+        context,
         onFirstFrame() {
           if (!isCurrent()) return;
           clearTimeout(loadTimer);
@@ -499,6 +556,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
           if (isCurrent()) failThree('设备暂时打不开 3D，可以继续用平面图。');
         },
       });
+      openingContext = undefined;
     } catch {
       if (!isCurrent()) return;
       failThree(threeRuntime
@@ -579,17 +637,31 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   syncControls();
   onChange(settings);
   useFlat();
-  if (settings.preferThree && navigator.connection?.saveData !== true) {
+  if (settings.preferThree && canRestoreThree()) {
     // Let the flat canvas paint before restoring a previously working 3D view.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (!disposed && activeMode === 'flat' && settings.preferThree) useThree(false);
     }));
+  } else if (isFastConnection() && 'IntersectionObserver' in window) {
+    // Read the flat view first. Start one low-priority request only if the
+    // visitor stays at a visible lab and the connection can spare it.
+    stageObserver = new IntersectionObserver(([entry]) => {
+      clearTimeout(preloadTimer);
+      if (entry.intersectionRatio < 0.45) return;
+      preloadTimer = setTimeout(() => {
+        if (!disposed && activeMode === 'flat' && document.visibilityState === 'visible') preloadThreeRuntime();
+        stopObservingStage();
+      }, 1250);
+    }, { threshold: 0.45 });
+    stageObserver.observe(flatHost);
   }
 
   return () => {
     disposed = true;
     loadVersion += 1;
     clearTimeout(loadTimer);
+    stopObservingStage();
+    releaseOpeningContext();
     three?.dispose();
     flat?.dispose();
   };

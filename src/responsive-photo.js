@@ -1,38 +1,8 @@
+import { photoForViewport } from './photo-sizes.js?v=7';
+export { evidencePhoto, galleryAssetForViewport, galleryPhoto, landscapePhoto, photoForViewport } from './photo-sizes.js?v=7';
+
 export const photoSourceUrl = file => new URL('../assets/' + file, import.meta.url).href;
-
-export const landscapePhoto = {
-  file: 'landscape-small.webp', width: 640, height: 426,
-  variants: [['landscape-420.webp', 420], ['landscape-small.webp', 640]],
-};
-
-const evidencePhotos = {
-  cloud: [760, 507],
-  earth: [610, 610],
-  'fishing-vessel': [640, 427],
-  fossil: [212, 220],
-  puddle: [760, 572],
-};
-
-export function evidencePhoto(id) {
-  const [width, height] = evidencePhotos[id];
-  return { file: 'evidence/' + id + '.webp', width, height };
-}
-
-export function galleryPhoto(photo, { thumbnail = false } = {}) {
-  const file = 'gallery/' + photo.file;
-  if (thumbnail) {
-    return {
-      file: 'gallery/' + photo.file.replace(/\.webp$/, '-320.webp'),
-      width: 320, height: Math.round(photo.height * 320 / photo.width), alt: photo.alt,
-    };
-  }
-  const mobile = photo.mobileFile && 'gallery/' + photo.mobileFile;
-  return {
-    file: mobile || file, width: photo.width, height: photo.height, alt: photo.alt,
-    variants: mobile && photo.width > 640 ? [[mobile, 640], [file, photo.width]] : undefined,
-  };
-}
-
+const PHOTO_TIMEOUT_MS = 8000;
 const escaped = value => String(value).replace(/[&"<>]/g, symbol => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' })[symbol]);
 
 export function responsivePhoto(photo, {
@@ -42,6 +12,7 @@ export function responsivePhoto(photo, {
   priority = loading === 'eager' ? 'high' : 'low',
   className = '',
 } = {}) {
+  photo = photoForViewport(photo);
   const source = photoSourceUrl(photo.file);
   const sources = photo.variants?.map(([file, width]) => `${photoSourceUrl(file)} ${width}w`).join(', ');
   const prefix = loading === 'deferred' ? 'data-photo-' : '';
@@ -52,22 +23,53 @@ export function responsivePhoto(photo, {
 
 export function mountDeferredPhotos(root) {
   const pending = new Set();
-  const selector = 'img[data-photo-src]';
+  const loading = new Map();
+  const fallbacks = new WeakMap();
+  const selector = 'img[data-site-photo]';
 
-  function showMissing(event) {
-    const image = event.target;
-    if (!image.matches?.('img[data-site-photo]')) return;
+  function stopWatching(image) {
+    clearTimeout(loading.get(image));
+    loading.delete(image);
+  }
+
+  function showMissing(image) {
+    stopWatching(image);
+    if (!root.contains(image) || fallbacks.has(image)) return;
     image.hidden = true;
     const fallback = document.createElement('span');
     fallback.className = 'photo-fallback';
     fallback.textContent = image.alt ? `照片暂时打不开。图中是${image.alt}。` : '照片暂时打不开';
+    fallbacks.set(image, fallback);
     image.after(fallback);
+  }
+
+  function onImageError(event) {
+    if (event.target.matches?.(selector)) showMissing(event.target);
+  }
+
+  function onImageLoad(event) {
+    const image = event.target;
+    if (!image.matches?.(selector)) return;
+    stopWatching(image);
+    const fallback = fallbacks.get(image);
+    if (!fallback) return;
+    fallback.remove();
+    fallbacks.delete(image);
+    image.hidden = false;
+  }
+
+  function watchLoading(image) {
+    if (loading.has(image) || image.complete || image.loading === 'lazy') return;
+    loading.set(image, setTimeout(() => {
+      if (!image.complete) showMissing(image);
+      else stopWatching(image);
+    }, PHOTO_TIMEOUT_MS));
   }
 
   function show(image) {
     visibility?.unobserve(image);
     pending.delete(image);
-    if (!root.contains(image) || !image.matches(selector)) return;
+    if (!root.contains(image) || !image.hasAttribute('data-photo-src')) return;
     const { photoSrc, photoSizes, photoSrcset } = image.dataset;
     if (photoSrcset) {
       image.sizes = photoSizes;
@@ -77,6 +79,7 @@ export function mountDeferredPhotos(root) {
     delete image.dataset.photoSrc;
     delete image.dataset.photoSizes;
     delete image.dataset.photoSrcset;
+    watchLoading(image);
   }
 
   const visibility = typeof IntersectionObserver === 'function'
@@ -86,6 +89,7 @@ export function mountDeferredPhotos(root) {
     : null;
 
   function watch(image) {
+    if (!image.hasAttribute('data-photo-src')) return watchLoading(image);
     if (pending.has(image)) return;
     if (!visibility) return show(image);
     pending.add(image);
@@ -98,6 +102,7 @@ export function mountDeferredPhotos(root) {
       pending.delete(image);
       visibility.unobserve(image);
     }
+    for (const image of loading.keys()) if (!root.contains(image)) stopWatching(image);
     for (const { addedNodes } of records) {
       for (const node of addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE || !root.contains(node)) continue;
@@ -107,11 +112,14 @@ export function mountDeferredPhotos(root) {
     }
   });
   added.observe(root, { childList: true, subtree: true });
-  root.addEventListener('error', showMissing, true);
+  root.addEventListener('error', onImageError, true);
+  root.addEventListener('load', onImageLoad, true);
   root.querySelectorAll(selector).forEach(watch);
   return () => {
     visibility?.disconnect();
     added.disconnect();
-    root.removeEventListener('error', showMissing, true);
+    root.removeEventListener('error', onImageError, true);
+    root.removeEventListener('load', onImageLoad, true);
+    for (const image of loading.keys()) stopWatching(image);
   };
 }

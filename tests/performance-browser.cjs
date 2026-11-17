@@ -15,6 +15,7 @@ const handset = {
   hasTouch: true,
 };
 const galleryPath = /\/assets\/gallery\//;
+const appPath = /\/src\/app-runtime\.js(?:\?|$)/;
 const runtimePath = /\/(?:three-runtime|scenes)\.js(?:\?|$)/;
 const threePath = /\/vendor\/three\/|\/(?:three-runtime|scenes)\.js(?:\?|$)/;
 const flatCanvas = '.flat-host canvas';
@@ -78,6 +79,11 @@ async function coldPage(browser, { kib = bandwidth, delay = latency, rate = cpuR
 const emit = value => console.log(JSON.stringify(value));
 const size = asset => asset?.bodyBytes ?? asset?.transferredBytes ?? 0;
 
+function assertEarlyPhoto(cover, requests) {
+  assert.equal(requests.length, 1, 'The application made extra shell requests');
+  assert.ok(cover.startMs < requests[0].endMs, 'The photo waited for application startup');
+}
+
 function currentImage(img) {
   if (img?.complete && img.naturalWidth && img.currentSrc) {
     const url = new URL(img.currentSrc);
@@ -102,8 +108,10 @@ async function checkHome(browser) {
     const cover = requested.find(item => item.path === path);
     emit({ scenario: 'cold home', readyMs, cover });
     if (verify) {
-      assert.ok(size(cover) > 0 && size(cover) <= 70 * 1024, 'The phone requested an oversized cover');
+      assert.ok(size(cover) > 0 && size(cover) <= 25 * 1024, 'The phone requested an oversized cover');
       assert.equal(cover.status, 200);
+      assertEarlyPhoto(cover, assets(appPath));
+      assert.equal(requested.filter(item => /landscape-.*\.webp/.test(item.path)).length, 1, 'The cover loaded twice');
       assert.equal(assets(threePath).length, 0, 'The homepage downloaded 3D code');
     }
   });
@@ -121,8 +129,10 @@ async function checkGallery(browser) {
     const cover = requested.find(item => item.path === path);
     emit({ scenario: 'cold Himalayas gallery', readyMs, photos: requested });
     if (!verify) return;
-    assert.ok(size(cover) > 0 && size(cover) <= 55 * 1024, 'The active phone photo exceeded its budget');
+    assert.ok(size(cover) > 0 && size(cover) <= 28 * 1024, 'The active phone photo exceeded its budget');
     assert.equal(cover.status, 200);
+    assertEarlyPhoto(cover, assets(appPath));
+    assert.equal(requested.filter(item => item.path === cover.path).length, 1, 'The first gallery photo loaded twice');
     assert.ok(requested.length <= 2, 'The gallery downloaded more than one unviewed neighbor');
     assert.ok(requested.every(item => item === cover || item.startMs >= cover.endMs),
       'A neighbor competed with the first photo');
@@ -246,6 +256,60 @@ async function checkHung3D(browser) {
   });
 }
 
+async function check3DPreparation(browser, { saveData = false, effectiveType = '4g' } = {}) {
+  await coldPage(browser, { kib: 2048, delay: 75 }, async ({ page, load, assets }) => {
+    const anticipate = !saveData && effectiveType === '4g';
+    await page.addInitScript(({ saveData, effectiveType }) => {
+      Object.defineProperty(navigator, 'connection', {
+        value: { saveData, effectiveType, downlink: 10, rtt: 75 },
+      });
+    }, { saveData, effectiveType });
+    await load('#/lab/globe?mode=terrain');
+    await page.locator(flatCanvas).scrollIntoViewIfNeeded({ timeout: 15000 });
+    if (!anticipate) {
+      await page.waitForTimeout(1750);
+      assert.equal(assets(threePath).length, 0, 'A restricted connection still preloaded 3D');
+    } else {
+      await page.waitForFunction(() => performance.getEntriesByType('resource')
+        .some(entry => new URL(entry.name).pathname.endsWith('/three-runtime.js')), null, { timeout: 5000 });
+      assert.equal(assets(threePath).length, 1, 'A visible fast-link lab should prepare exactly one module');
+    }
+    assert.equal(await page.locator(threeState).getAttribute('data-three-state'), 'flat');
+    await page.locator('[data-toggle-view]').click();
+    await page.locator('[data-three-state="three"]').waitFor({ timeout: 8500 });
+    assert.equal(assets(threePath).length, 1, 'Opening the globe should reuse the one runtime request');
+    if (!anticipate) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.locator(flatCanvas).waitFor();
+      await page.waitForTimeout(700);
+      assert.equal(await page.locator(threeState).getAttribute('data-three-state'), 'flat');
+      assert.equal(assets(threePath).length, 1, 'A remembered 3D view restored itself on a restricted connection');
+    }
+    emit({ scenario: saveData ? 'data saver 3D' : effectiveType === '3g' ? 'remembered 3D on 3g' : 'prepared 3D', outcome: !anticipate
+      ? 'one runtime only after click; the next visit waited for the learner'
+      : 'the flat view stayed visible and the click reused the one preloaded runtime' });
+  });
+}
+
+async function checkUnsupported3D(browser) {
+  await coldPage(browser, { kib: 2048, delay: 75 }, async ({ page, load, assets }) => {
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...options) {
+        if (type === 'webgl' || type === 'webgl2') return null;
+        return getContext.call(this, type, ...options);
+      };
+    });
+    await load('#/lab/globe?mode=terrain');
+    await page.locator(flatCanvas).waitFor();
+    await page.locator('[data-toggle-view]').click();
+    await page.locator('[data-three-state="failed"]').waitFor();
+    assert.equal(assets(threePath).length, 0, 'Missing WebGL started fetching the runtime');
+    await useTerrainControl(page, 'alps', '阿尔卑斯');
+    emit({ scenario: 'unavailable WebGL', outcome: 'flat controls remained usable and no runtime was requested' });
+  });
+}
+
 async function main() {
   emit({ mode, origin: origin.href, bandwidthKiB: bandwidth, latencyMs: latency, cpuRate, handset });
   const browser = await chromium.launch({ executablePath: process.env.GEOLAB_CHROME });
@@ -257,6 +321,10 @@ async function main() {
       await checkWorking3D(browser);
       await checkGalleryRetry(browser);
       await checkHung3D(browser);
+      await check3DPreparation(browser);
+      await check3DPreparation(browser, { saveData: true });
+      await check3DPreparation(browser, { effectiveType: '3g' });
+      await checkUnsupported3D(browser);
     }
   } finally {
     await browser.close();

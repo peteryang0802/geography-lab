@@ -1,15 +1,16 @@
 import { lessons, projects, legendItems, concepts, getRelations, labs, bookPageUrl } from './catalog.js';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js?v=5';
-import { mountPhotoGallery } from './photo-gallery.js?v=5';
+import { mountPhotoGallery } from './photo-gallery.js?v=7';
 import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
-import { createLearningStore } from './learning-state.js?v=3';
+import { createLearningStore } from './learning-state.js';
 import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=6';
 import { inquiries } from './inquiries.js?v=6';
 import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=6';
 import { fitActivityStage } from './activity-stage.js';
-import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=5';
+import { LAB_UI_MODULE } from './lab-module.js';
+import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -67,7 +68,7 @@ function home() {
   const usesRainPhoto = viewId !== 'recall' && entry.id === 'contours';
   const homePhoto = usesRainPhoto
     ? responsivePhoto(evidencePhoto('puddle'), { alt: '雨后路面上的积水', loading: 'eager', sizes: '(max-width: 700px) 92vw, 480px' }) + '<figcaption>雨后路面实景 · Paul The Writer / CC0</figcaption>'
-    : responsivePhoto(landscapePhoto, { alt: '高低起伏的山脊之间，一条河穿过塔拉河峡谷', loading: 'eager', sizes: '(max-width: 700px) 92vw, 480px' }) + '<figcaption>塔拉河峡谷 · Alexkom000 / CC BY 4.0</figcaption>';
+    : responsivePhoto(landscapePhoto, { alt: '塔拉河峡谷，近处是树丛，远处两侧山坡夹着深谷', loading: 'eager', sizes: '(max-width: 700px) 92vw, 480px' }) + '<figcaption>塔拉河峡谷 · Alexkom000 / CC BY 4.0</figcaption>';
   return `
     <section class="inquiry-home" aria-labelledby="hero-title">
       <div class="inquiry-home-copy">
@@ -188,7 +189,7 @@ function activityMarkup(lesson, activities) {
 function activityPhoto(photo) {
   return `<figure class="inquiry-picture-note">
     ${responsivePhoto(galleryPhoto(photo), { alt: photo.alt, sizes: '(max-height: 500px) and (orientation: landscape) 39vw, (max-width: 700px) 92vw, 350px' })}
-    <figcaption>沿着白色山峰看一眼。山脉背后，哪一片更平缓？
+    <figcaption>剖面里的 A 是成排的白色雪峰，B 是雪峰以北、照片远处的青藏高原。哪一处更平缓？
       <small>国际空间站实拍 · NASA / ISS031-E-67020</small></figcaption>
   </figure>`;
 }
@@ -326,7 +327,7 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
 
 async function mountLearningLab(host, lab, params, saved, key, options, isActive) {
   const route = activeHash;
-  const { mountLabUI } = await import('./lab-ui.js?v=6');
+  const { mountLabUI } = await import(LAB_UI_MODULE);
   if (!isActive()) return;
   let mounted = false;
   const dispose = mountLabUI(host, lab, params, saved, settings => {

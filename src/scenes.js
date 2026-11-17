@@ -33,6 +33,7 @@ const MOUNTAIN_COLOR = [
 
 const CONTOUR_RATIO = 195;
 const WORLD_ALTITUDE_RATIO = 3000;
+const coastCanvases = new Map();
 
 function coordinateVector(lat, lon, magnitude = 1) {
   const { x, y, z } = geographicDirection(lat, lon, magnitude);
@@ -49,6 +50,14 @@ function colorAt(altitude, stops) {
 }
 
 function makeCoastTexture(showGrid) {
+  if (!coastCanvases.has(showGrid)) coastCanvases.set(showGrid, paintCoast(showGrid));
+  const texture = new THREE.CanvasTexture(coastCanvases.get(showGrid));
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function paintCoast(showGrid) {
   const image = document.createElement('canvas');
   image.width = 1024;
   image.height = 512;
@@ -86,25 +95,27 @@ function makeCoastTexture(showGrid) {
   }
 
   if (showGrid) {
-    const gridLine = (x1, y1, x2, y2, color, width) => {
+    const gridLine = (x1, y1, x2, y2, reference) => {
       ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
+      ctx.strokeStyle = '#264755b8';
+      ctx.lineWidth = reference ? 4.6 : 1.5;
       ctx.stroke();
+      if (reference) {
+        ctx.strokeStyle = '#fff1b8';
+        ctx.lineWidth = 2.65;
+        ctx.stroke();
+      }
     };
     for (let lat = -75; lat <= 75; lat += 15) {
-      gridLine(0, tileY(lat), image.width, tileY(lat), lat === 0 ? '#fff1b8' : '#eefafa95', lat === 0 ? 3 : 0.95);
+      gridLine(0, tileY(lat), image.width, tileY(lat), lat === 0);
     }
     for (let lon = -180; lon < 180; lon += 15) {
-      gridLine(tileX(lon), 0, tileX(lon), image.height, lon === 0 ? '#fff1b8' : '#eefafa95', lon === 0 ? 3 : 0.95);
+      gridLine(tileX(lon), 0, tileX(lon), image.height, lon === 0);
     }
   }
-  const texture = new THREE.CanvasTexture(image);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return image;
 }
 
 function makeLine(points, color, opacity = 1) {
@@ -384,11 +395,17 @@ function makeContours(altitudeAt, width, depth, nx, nz, levels, ratio, color) {
   for (const level of levels) {
     for (let j = 0; j < nz; j++) {
       for (let i = 0; i < nx; i++) {
+        const topLeft = heights[j][i];
+        const topRight = heights[j][i + 1];
+        const bottomRight = heights[j + 1][i + 1];
+        const bottomLeft = heights[j + 1][i];
+        if (level <= Math.min(topLeft, topRight, bottomRight, bottomLeft) ||
+            level > Math.max(topLeft, topRight, bottomRight, bottomLeft)) continue;
         const corners = [
-          [xAt(i), zAt(j), heights[j][i]],
-          [xAt(i + 1), zAt(j), heights[j][i + 1]],
-          [xAt(i + 1), zAt(j + 1), heights[j + 1][i + 1]],
-          [xAt(i), zAt(j + 1), heights[j + 1][i]],
+          [xAt(i), zAt(j), topLeft],
+          [xAt(i + 1), zAt(j), topRight],
+          [xAt(i + 1), zAt(j + 1), bottomRight],
+          [xAt(i), zAt(j + 1), bottomLeft],
         ];
         const crossings = [];
         for (let edge = 0; edge < 4; edge++) {
@@ -517,21 +534,31 @@ function installContour(scene) {
     makeGround(width + 0.08, depth + 0.08),
     makeContours(contourAltitude, width, depth, 60, 42, CONTOUR_LEVELS, CONTOUR_RATIO, '#42554b'),
   );
-  const ab = makeSectionTrace('ab');
-  const cd = makeSectionTrace('cd');
+  const traces = new Map();
+  const profiles = new Map();
+  let currentSection;
   const walker = new THREE.Mesh(
     new THREE.SphereGeometry(0.13, 16, 10),
     new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
   );
-  scene.add(ab, cd, walker);
+  scene.add(walker);
   addLandscapeLights(scene);
   return {
     update(config) {
       const section = config.section === 'cd' ? 'cd' : 'ab';
       const step = THREE.MathUtils.clamp(Math.round(config.walkStep ?? 0), 0, 12);
-      const { distance, elevation } = contourProfile(section, 13)[step];
-      ab.visible = section === 'ab';
-      cd.visible = section === 'cd';
+      if (section !== currentSection) {
+        if (currentSection) traces.get(currentSection).visible = false;
+        if (!traces.has(section)) {
+          const trace = makeSectionTrace(section);
+          traces.set(section, trace);
+          scene.add(trace);
+          profiles.set(section, contourProfile(section, 13));
+        }
+        traces.get(section).visible = true;
+        currentSection = section;
+      }
+      const { distance, elevation } = profiles.get(section)[step];
       walker.position.set(distance - SECTION_HALF_LENGTH, elevation / CONTOUR_RATIO + 0.14, SECTION_POSITIONS[section]);
     },
   };
@@ -631,21 +658,18 @@ const SCENE_SETUP = {
   terrain: { radius: 4.9, direction: [0.01, 0.54, 1], focusHeight: 1.34 },
 };
 
-export function mountScene(host, kind, config = {}, { onFirstFrame, onRenderError } = {}) {
+export function mountScene(host, kind, config, { canvas, context, onFirstFrame, onRenderError }) {
   const setup = SCENE_SETUP[kind];
   if (!setup) throw new Error(`Unknown scene kind: ${kind}`);
-  const canvas = document.createElement('canvas');
   canvas.className = 'three-canvas';
   canvas.setAttribute('aria-hidden', 'true');
   canvas.style.display = 'block';
   canvas.style.width = '100%';
   canvas.style.height = '100%';
-  const context = canvas.getContext('webgl2', { antialias: true, alpha: true, powerPreference: 'default' });
-  if (!context) throw new Error('WebGL 2 is unavailable');
-
-  const renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, context });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const pixelRatioLimit = matchMedia('(pointer: coarse)').matches ? 1.25 : 1.5;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioLimit));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.02;
   if (onRenderError) renderer.debug.onShaderError = () => { throw new Error('3D shader compilation failed'); };
@@ -674,6 +698,8 @@ export function mountScene(host, kind, config = {}, { onFirstFrame, onRenderErro
   let fitDistance = 0;
   let startingPose;
   let firstFrame = true;
+  let renderWidth = 0;
+  let renderHeight = 0;
 
   function schedule() {
     if (disposed || pendingFrame) return;
@@ -697,7 +723,9 @@ export function mountScene(host, kind, config = {}, { onFirstFrame, onRenderErro
   function resize() {
     const width = host.clientWidth;
     const height = host.clientHeight;
-    if (!width || !height) return;
+    if (!width || !height || (width === renderWidth && height === renderHeight)) return;
+    renderWidth = width;
+    renderHeight = height;
     const aspect = width / height;
     renderer.setSize(width, height, false);
     if (camera.isOrthographicCamera) {

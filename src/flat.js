@@ -59,24 +59,28 @@ function latY(bounds, lat) {
   return bounds.y + (90 - lat) / 180 * bounds.height;
 }
 
+let daylightDirections;
+
 function makeDaylightMask() {
   const canvas = document.createElement('canvas');
   canvas.width = 180;
   canvas.height = 90;
   const context = canvas.getContext('2d');
-  const directions = [];
-  let lastKey;
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      directions.push(geographicDirection(90 - (y + 0.5) * 2, -180 + (x + 0.5) * 2));
+  if (!daylightDirections) {
+    daylightDirections = [];
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        daylightDirections.push(geographicDirection(90 - (y + 0.5) * 2, -180 + (x + 0.5) * 2));
+      }
     }
   }
+  let lastKey;
   return (sun, key) => {
     if (key === lastKey || !context) return canvas;
     lastKey = key;
     const image = context.createImageData(canvas.width, canvas.height);
-    for (let index = 0; index < directions.length; index++) {
-      const { x, y, z } = directions[index];
+    for (let index = 0; index < daylightDirections.length; index++) {
+      const { x, y, z } = daylightDirections[index];
       const dotProduct = x * sun.x + y * sun.y + z * sun.z;
       const darkness = Math.min(1, Math.max(0, (0.05 - dotProduct) / 0.09));
       const offset = index * 4;
@@ -146,7 +150,7 @@ function drawMapSites(ctx, bounds, focus) {
 }
 
 function makeGlobePainter(schedule) {
-  const renderMask = makeDaylightMask();
+  let renderMask;
   let relief;
   let requestedRelief = false;
   return (ctx, width, height, config) => {
@@ -195,6 +199,7 @@ function makeGlobePainter(schedule) {
 
     if (mode === 'daylight') {
       const { direction, declination, subsolarLongitude } = sunlightAt(lat, lon, hour, month);
+      renderMask ??= makeDaylightMask();
       ctx.drawImage(renderMask(direction, `${hour}:${month}`), x, y, w, h);
       dot(ctx, lonX(bounds, subsolarLongitude), latY(bounds, declination), 4, '#ffcb57', '#623727');
     }

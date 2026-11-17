@@ -1,4 +1,4 @@
-import { evidencePhoto, responsivePhoto } from './responsive-photo.js?v=5';
+import { evidencePhoto, responsivePhoto } from './responsive-photo.js?v=7';
 
 export const inquiryViews = {
   recall: {

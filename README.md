@@ -12,7 +12,7 @@
 
 ## 本地预览和检查
 
-在仓库运行 `python3 -m http.server 8773 --bind 127.0.0.1`，打开 `http://127.0.0.1:8773/`。网页无需构建。GitHub Pages 从 `main` 根目录发布。
+在仓库运行 `python3 -m http.server 8773 --bind 127.0.0.1`，打开 `http://127.0.0.1:8773/`。仓库含发布文件，GitHub Pages 从 `main` 根目录提供静态页面。修改入口、入口依赖或图片规格后，运行 `sh scripts/build-app.sh` 刷新 `src/app-runtime.js`、入口版本与首图请求提示。
 
 使用 Node 和 Playwright 运行 `GEOLAB_ROUND=1 node tests/inquiry-browser.cjs`，分别把轮次设为 1、2、3，检查 360×640、390×844、667×335。每轮遍历三版全册，实操每课的主图与课末对照，检查画面变化、同屏反馈、原页路径、进度恢复和教材顺序。另测 Three.js、相册、旧知识卡、复习和弱网重试。通过 `GEOLAB_URL` 指定预览。设置 `GEOLAB_SCREENSHOTS` 保存固定视口截图，配合 `GEOLAB_CAPTURE_ONLY=1` 可以单独截取画面。
 

@@ -329,7 +329,7 @@ async function verifySlowGallery(browser) {
   const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const p = await context.newPage();
   let failed = false;
-  await p.route('**/himalayas-cho-la-640.webp*', async route => {
+  await p.route('**/himalayas-cho-la-480.webp*', async route => {
     if (!failed && !route.request().url().includes('?retry=')) { failed = true; await route.abort(); }
     else await route.continue();
   });
@@ -343,7 +343,7 @@ async function verifySlowGallery(browser) {
   const init = Date.now();
   await p.locator('.gallery-slide').first().waitFor();
   await p.locator('.gallery-slide').first().locator('img').evaluate(img => img.decode());
-  assert.match(photoRequests[0], /himalayas-everest-640/);
+  assert.match(photoRequests[0], /himalayas-everest-480/);
   assert.ok(Date.now() - init < 4500, 'first phone image');
   await p.locator('[data-next]').click();
   const retry = p.locator('.gallery-slide').nth(1).getByRole('button', { name: /重试/ });
@@ -352,8 +352,11 @@ async function verifySlowGallery(browser) {
   await p.waitForFunction(() => document.querySelectorAll('.gallery-slide')[1]?.dataset.imageState === 'loaded');
   await p.locator('[data-next]').click();
   await p.waitForFunction(() => document.querySelector('[data-count]')?.textContent === '3 / 3');
+  photoRequests.length = 0;
   await p.reload();
   await p.waitForFunction(() => document.querySelector('[data-count]')?.textContent === '3 / 3');
+  await p.waitForFunction(() => document.querySelectorAll('.gallery-slide')[2]?.dataset.imageState === 'loaded');
+  assert.match(photoRequests[0], /himalayas-from-orbit-480/);
   await context.close();
   console.log('PASS throttled first image, forced error, retry, saved image index');
 }

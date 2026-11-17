@@ -23,6 +23,19 @@ const isRecord = value => Boolean(value && typeof value === 'object' && !Array.i
 const isTime = value => Number.isFinite(value) && value >= 0;
 const isRoute = value => typeof value === 'string' && value.length < 480 && /^#\/[a-z\d/-]*(?:\?[^<>"']*)?$/i.test(value);
 
+const viewStorageKey = namespace => 'geography-lab:views:v1' + (namespace ? ':' + namespace : '');
+
+export function readSavedViews(namespace, storage = browserStorage('sessionStorage')) {
+  const views = new Map();
+  const savedViews = read(storage, viewStorageKey(namespace));
+  if (Array.isArray(savedViews)) {
+    for (const entry of savedViews.slice(-viewLimit)) {
+      if (Array.isArray(entry) && isRoute(entry[0]) && isRecord(entry[1])) views.set(entry[0], entry[1]);
+    }
+  }
+  return views;
+}
+
 export function createLearningStore({
   lessons,
   concepts,
@@ -35,7 +48,7 @@ export function createLearningStore({
 }) {
   const storagePrefix = namespace ? versionKey + ':' + namespace : versionKey;
   const resumeKey = storagePrefix + ':resume';
-  const viewsKey = 'geography-lab:views:v1' + (namespace ? ':' + namespace : '');
+  const viewsKey = viewStorageKey(namespace);
   const lessonIds = new Set(lessons.map(item => item.id));
   const conceptIds = new Set(concepts.map(item => item.id));
   const labIds = new Set(labs.map(item => item.id));
@@ -55,13 +68,7 @@ export function createLearningStore({
     .map(group => [group, Object.create(null)]));
   Object.assign(state, { saved: [], resume: null, lastLesson: null });
   const memoryOnly = new Set();
-  const views = new Map();
-  const savedViews = read(session, viewsKey);
-  if (Array.isArray(savedViews)) {
-    for (const entry of savedViews.slice(-viewLimit)) {
-      if (Array.isArray(entry) && isRoute(entry[0]) && isRecord(entry[1])) views.set(entry[0], entry[1]);
-    }
-  }
+  const views = readSavedViews(namespace, session);
 
   function normalizeRecord(group, id, value) {
     if (!Object.hasOwn(ids, group) || !ids[group].has(id)) return undefined;
