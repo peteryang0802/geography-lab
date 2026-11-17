@@ -8,7 +8,7 @@ const defaultsByLab = {
     hour: 4, month: 6, viewYaw: 0, terrainFocus: 'himalayas', flow: 'currents',
     season: 'summer', currentId: 'kuroshio', flat: false,
   },
-  contour: { section: 'ab', flat: false },
+  contour: { section: 'ab', walkStep: 0, flat: true, exerciseVersion: 2 },
   terrain: { siteA: 'himalayas', siteB: 'alps', flat: false },
 };
 const globeModes = ['coordinates', 'daylight', 'terrain', 'circulation'];
@@ -30,7 +30,12 @@ function clipSettings(kind, saved, params) {
   const initial = defaultsByLab[kind];
   const entryKey = params.toString();
   const isNewEntry = entryKey !== saved?.entryKey;
-  const state = { ...initial, entryKey, flat: saved?.flat === true || navigator.connection?.saveData === true };
+  const state = {
+    ...initial,
+    entryKey,
+    flat: (saved?.flat ?? initial.flat) === true || navigator.connection?.saveData === true,
+    evidenceOpen: saved?.evidenceOpen === true,
+  };
   if (kind === 'globe') {
     state.pointLat = numeric(saved?.pointLat ?? saved?.lat, initial.pointLat, -90, 90);
     state.pointLon = numeric(saved?.pointLon ?? saved?.lon, initial.pointLon, -180, 180);
@@ -46,13 +51,22 @@ function clipSettings(kind, saved, params) {
     state.mode = globeModes.includes(saved?.mode) ? saved.mode : 'coordinates';
     if (isNewEntry && globeModes.includes(params.get('mode'))) {
       state.mode = params.get('mode');
+      const flow = params.get('flow');
+      const season = params.get('season');
+      if (flow === 'monsoon' || flow === 'currents') state.flow = flow;
+      if (season === 'winter' || season === 'summer') state.season = season;
       Object.assign(state, globeFocus(state), { viewYaw: 0 });
     }
   }
-  if (kind === 'contour' && saved?.section === 'cd') state.section = 'cd';
+  if (kind === 'contour') {
+    if (saved?.section === 'cd') state.section = 'cd';
+    state.walkStep = Math.round(numeric(saved?.walkStep, initial.walkStep, 0, 12));
+    if (saved?.exerciseVersion !== initial.exerciseVersion) state.flat = true;
+  }
   if (kind === 'terrain') {
     state.siteA = isNewEntry && siteIds.includes(params.get('site')) ? params.get('site') : siteIds.includes(saved?.siteA) ? saved.siteA : initial.siteA;
-    state.siteB = siteIds.includes(saved?.siteB) ? saved.siteB : initial.siteB;
+    state.siteB = isNewEntry && siteIds.includes(params.get('siteB')) ? params.get('siteB')
+      : siteIds.includes(saved?.siteB) ? saved.siteB : initial.siteB;
     if (state.siteA === state.siteB) state.siteB = siteIds.find(id => id !== state.siteA);
   }
   return state;
@@ -89,7 +103,7 @@ const controls = (kind, settings) => {
     </div>
     <div class="control-pair" data-globe-terrain hidden>
       <div class="control-group"><label for="terrain-focus">找一处山地</label><select id="terrain-focus" data-terrain-focus>${sites.map(([id, site]) => `<option value="${id}">${site.name}</option>`).join('')}</select></div>
-      <div class="dock-link"><a class="button" href="#/lab/terrain">并排比较山地 →</a></div>
+      <div class="dock-link"><a class="button" data-compare-terrain href="#/lab/terrain">并排比较山地 →</a></div>
     </div>
     <div data-globe-flows hidden>
       <div class="control-pair">
@@ -100,9 +114,13 @@ const controls = (kind, settings) => {
       </div>
     </div>`;
   if (kind === 'contour') return `
-    <div role="group" aria-label="选择剖切线" class="mini-actions">
-      <button type="button" class="chip" data-section="ab">剖面 A–B</button>
-      <button type="button" class="chip" data-section="cd">剖面 C–D</button>
+    <div role="group" aria-label="选择山路" class="mini-actions">
+      <button type="button" class="chip" data-section="ab">走 A 到 B</button>
+      <button type="button" class="chip" data-section="cd">走 C 到 D</button>
+    </div>
+    <div class="control-group walk-control" data-walk>
+      <label for="lab-walk">沿路走一走 <output data-walk-distance></output></label>
+      <input id="lab-walk" type="range" min="0" max="12" step="1" value="${settings.walkStep}" data-number="walkStep">
     </div>`;
   return '<div class="control-pair">' + ['A', 'B'].map(channel => `
     <div class="control-group"><label for="site-${channel}">山地 ${channel}</label>
@@ -118,10 +136,11 @@ const challenges = {
     feedback: ['你在用同一点落在亮面或暗面的证据判读。04:00 UTC 相当于北京 12:00，16:00 UTC 相当于北京次日 00:00。', '核对控制台的“该点日照”。先找亮面，再看地点标记。'],
   },
   contour: {
-    title: '哪条剖面出现了更陡的一段？',
-    prompt: '比较 A–B 和 C–D。同一水平距离内，哪条线的海拔变化曾经更大？',
-    options: ['C–D 有更陡的一段', 'A–B 有更陡的一段'],
-    feedback: ['C–D 的局部剖面更陡。同样的水平距离内，它的高程变化更大。', '先切换两条剖面，再看最高值附近曲线的斜率和下方的高程变化数据。'],
+    title: '哪条山路有一小段更陡？',
+    prompt: '先沿 A 到 B 走走，再换 C 到 D。侧面图上，哪条路有一小段升高或降低得更快？',
+    options: ['A 到 B', 'C 到 D'],
+    answer: 1,
+    feedback: ['切回侧面图，找两条线上斜得最快的那一小段，比较同样远的距离。', 'C 到 D 有一段更陡。走同样远，脚下升高或降低得更多。从侧面看沿线的起伏，这张图就叫地形剖面图。'],
   },
   terrain: {
     title: '两处山地怎样比才公平？',
@@ -141,7 +160,11 @@ function challengeHtml(kind) {
 export function mountLabUI(host, lab, params, saved, onChange) {
   const kind = lab.id;
   let settings = clipSettings(kind, saved, params);
-  if (Number.isInteger(saved?.answer) && saved.answer >= 0 && saved.answer < challenges[kind].options.length) settings.answer = saved.answer;
+  const challenge = challenges[kind];
+  const correctAnswer = challenge.answer ?? 0;
+  const sameExercise = kind !== 'contour' || saved?.exerciseVersion === settings.exerciseVersion;
+  if (sameExercise && Number.isInteger(saved?.answer) && saved.answer >= 0 && saved.answer < challenge.options.length) settings.answer = saved.answer;
+  host.dataset.labKind = kind;
   let disposed = false;
   let loadVersion = 0;
   let activeMode = 'flat';
@@ -188,6 +211,10 @@ export function mountLabUI(host, lab, params, saved, onChange) {
   const flatHost = host.querySelector('.flat-host');
   const switcher = host.querySelector('[data-toggle-view]');
   const rotation = host.querySelector('[data-rotate]');
+  const turn = host.querySelector('[data-turn]');
+  const walk = host.querySelector('[data-walk]');
+  const evidence = host.querySelector('.lab-evidence');
+  evidence.open = settings.evidenceOpen;
   const reading = host.querySelector('[data-reading]');
   const live = host.querySelector('[data-live]');
   const flowLegend = host.querySelector('[data-flow-legend]');
@@ -209,6 +236,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       host.querySelector('[data-current-controls]').hidden = settings.flow !== 'currents';
       host.querySelector('[data-season-controls]').hidden = settings.flow !== 'monsoon';
       host.querySelector('[data-terrain-focus]').value = settings.terrainFocus;
+      host.querySelector('[data-compare-terrain]').href = '#/lab/terrain?' + new URLSearchParams({ site: settings.terrainFocus, fromGlobe: 'terrain' });
       host.querySelector('[data-flow]').value = settings.flow;
       host.querySelector('[data-current]').value = settings.currentId;
       host.querySelector('[data-season]').value = settings.season;
@@ -259,8 +287,13 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       const samples = contourProfile(settings.section, 13);
       const elevations = samples.map(point => point.elevation);
       const maxJump = Math.round(Math.max(...elevations.slice(1).map((value, i) => Math.abs(value - elevations[i]))));
-      live.textContent = `剖面 ${settings.section === 'ab' ? 'A–B' : 'C–D'} · 相邻采样最大高差约 ${maxJump} 米`;
-      reading.textContent = `两条线全长均约 9.6 千米，采样间隔约 0.8 千米。当前线的最高采样点约 ${Math.max(...elevations)} 米。模型为虚构地貌。`;
+      const route = settings.section === 'ab' ? 'A 到 B' : 'C 到 D';
+      const point = samples[settings.walkStep];
+      host.querySelector('[data-walk-distance]').textContent = '· ' + point.distance.toFixed(1) + ' 千米';
+      live.textContent = activeMode === 'three'
+        ? `${route} · 看亮线穿过了山的哪里`
+        : `${route} · 脚下约 ${Math.round(point.elevation)} 米`;
+      reading.textContent = `侧面图的线表示沿路的高低，这就是地形剖面图。两条路在模型中都长约 9.6 千米。在当前路线，同样走约 0.8 千米，最大高差约 ${maxJump} 米。`;
     } else {
       const a = TERRAIN_SITES[settings.siteA];
       const b = TERRAIN_SITES[settings.siteB];
@@ -278,12 +311,12 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     }
     for (const [index, button] of answerButtons.entries()) {
       button.setAttribute('aria-pressed', String(settings.answer === index));
-      button.classList.toggle('try-again', index > 0 && settings.answer === index);
+      button.classList.toggle('try-again', index !== correctAnswer && settings.answer === index);
     }
     labFeedback.hidden = !Number.isInteger(settings.answer);
     if (!labFeedback.hidden) {
       labFeedback.textContent = challenges[kind].feedback[settings.answer];
-      labFeedback.classList.toggle('try-again', settings.answer !== 0);
+      labFeedback.classList.toggle('try-again', settings.answer !== correctAnswer);
     }
   }
 
@@ -317,9 +350,12 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     flatHost.hidden = false;
     flat ||= mountFlat(flatHost, kind, sceneConfig());
     flat.update(sceneConfig());
-    switcher.textContent = '开启 3D';
+    switcher.textContent = kind === 'contour' ? '看 3D 山坡' : '开启 3D';
     rotation.hidden = true;
-    stage.textContent = message;
+    if (turn) turn.hidden = true;
+    if (walk) walk.hidden = false;
+    stage.textContent = kind === 'contour' && message === '平面视图' ? '从上看 · 从侧面看' : message;
+    syncControls();
   }
 
   async function useThree() {
@@ -341,8 +377,11 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       flatHost.hidden = true;
       activeMode = 'three';
       stage.textContent = 'Three.js 三维视图';
-      switcher.textContent = '切换平面';
+      switcher.textContent = kind === 'contour' ? '看侧面' : '切换平面';
       rotation.hidden = !rotatable;
+      if (turn) turn.hidden = false;
+      if (walk) walk.hidden = true;
+      syncControls();
       rotation.setAttribute('aria-pressed', String(touchEnabled));
       rotation.textContent = touchEnabled ? '恢复页面滑动' : '旋转场景';
     } catch {
@@ -411,6 +450,9 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     three?.update(sceneConfig());
   });
 
+  evidence.addEventListener('toggle', () => {
+    if (settings.evidenceOpen !== evidence.open) change({ evidenceOpen: evidence.open });
+  });
   syncControls();
   onChange(settings);
   useFlat();

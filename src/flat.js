@@ -227,7 +227,7 @@ function makeGlobePainter(schedule) {
   };
 }
 
-function drawChart(ctx, box, { lines, maximum, step, unitX, unitY }) {
+function drawChart(ctx, box, { lines, maximum, step, unitX, unitY, walk }) {
   const labelSize = box.width < 260 ? 10 : 11;
   const plot = {
     x: box.x + (maximum >= 1000 ? 50 : 42),
@@ -244,7 +244,10 @@ function drawChart(ctx, box, { lines, maximum, step, unitX, unitY }) {
   ctx.fillText(unitY, box.x + 9, box.y + 7);
   font(ctx, labelSize);
   ctx.textAlign = 'right';
-  for (let elevation = 0; elevation <= maximum; elevation += step) {
+  const elevationTicks = plot.height < 52
+    ? [0, maximum / 2, maximum]
+    : Array.from({ length: Math.floor(maximum / step) + 1 }, (_, index) => index * step);
+  for (const elevation of elevationTicks) {
     const row = projectY(elevation);
     strokeLine(ctx, plot.x, row, plot.x + plot.width, row, '#315d5830');
     ctx.fillStyle = MUTED;
@@ -281,6 +284,12 @@ function drawChart(ctx, box, { lines, maximum, step, unitX, unitY }) {
     ctx.setLineDash([]);
   }
 
+  if (walk) {
+    const x = projectX(walk.fraction);
+    const y = projectY(walk.elevation);
+    strokeLine(ctx, x, plot.y, x, plot.y + plot.height, '#82512d', 1.2);
+    dot(ctx, x, y, 4.8, '#ffc46d', '#592e18');
+  }
   ctx.fillStyle = MUTED;
   ctx.textAlign = 'center';
   const ticks = [0, 0.25, 0.5, 0.75, 1];
@@ -334,7 +343,7 @@ function makeContourPainter() {
     font(ctx, 11, 600);
     ctx.fillStyle = INK;
     ctx.textAlign = 'left';
-    ctx.fillText('等高线图', planX, planY - 8);
+    ctx.fillText('从上看', planX, planY - 8);
 
     const lineY = planY + (SECTION_POSITIONS[section] + 3.5) * planWidth / 10;
     const startX = planX + planWidth * 0.024;
@@ -352,10 +361,15 @@ function makeContourPainter() {
       : { x: 3, y: planHeight + 3, width: width - 7, height: height - planHeight - 2 };
     const profile = contourProfile(section);
     const distance = profile.at(-1).distance;
+    const steps = contourProfile(section, 13);
+    const walkIndex = Math.max(0, Math.min(12, Math.round(config.walkStep ?? 0)));
+    const sample = steps[walkIndex];
+    const fraction = sample.distance / distance;
+    dot(ctx, startX + (endX - startX) * fraction, lineY, 4.8, '#ffc46d', '#592e18');
     const lines = [{ color: MOUNTAIN_A, fill: '#087d7622', points: profile.map(({ distance: km, elevation }) => [km / distance, elevation]) }];
     drawChart(ctx, chart, {
-      lines, maximum: 600, step: 150,
-      unitY: `${start}—${end} 剖面 · 海拔（米）`,
+      lines, maximum: 600, step: 150, walk: { fraction, elevation: sample.elevation },
+      unitY: `从侧面看 · 海拔（米）`,
       unitX: (fraction) => fraction === 0 ? '0' : `${(fraction * distance).toFixed(1)} km`,
     });
   };

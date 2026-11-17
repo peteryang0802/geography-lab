@@ -2,6 +2,8 @@ import { chapters, lessons, projects, legendItems, concepts, getRelations, labs,
 import { mountLabUI } from './lab-ui.js';
 import { mountWidget } from './widgets.js';
 import { FLOW_SOURCES } from './flow-model.js';
+import { topicViews } from './topic-views.js';
+import { mountPhotoGallery } from './photo-gallery.js';
 
 const main = document.querySelector('#content');
 const notice = document.querySelector('#announcement');
@@ -11,6 +13,8 @@ const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
 const byConcept = new Map(concepts.map(concept => [concept.id, concept]));
 const byLab = new Map(labs.map(lab => [lab.id, lab]));
 const scrollPositions = new Map();
+const galleryPositions = new Map();
+const exploreState = { query: '', showAll: false };
 const allowedStates = ['answers', 'visits', 'labs', 'widgets', 'notes'];
 let activeHash = '';
 let cleanup;
@@ -209,33 +213,47 @@ function showLesson(lesson) {
   });
 }
 
-const mountainIds = ['himalayas', 'alps', 'cordillera', 'andes'];
-
 function showConcept(concept, query) {
   const origin = query.get('from');
   const safeOrigin = /^#\/(?:lab|lesson|concept)\/[a-z\d-]+(?:\?[^<>]*)?$/i.test(origin || '') && origin.length < 360 ? origin : '#/explore';
+  const currentCard = activeHash.length < 220 ? activeHash : conceptUrl(concept.id);
   const edges = getRelations(concept.id);
   const links = new Map(edges.map(item => [item.id, item]));
   const lesson = byLesson.get(concept.lessonId);
-  const mountain = mountainIds.includes(concept.id);
-  const compare = labUrl('terrain', { site: concept.id });
+  const topic = topicViews[concept.id];
+  const compareWith = byConcept.get(topic?.compareWith);
   const directlyRelatedLab = labs.find(lab => lab.links.includes(concept.id));
+  const importantIds = (topic ? [topic.compareWith, 'contour'] : [...links.keys()].slice(0, 2)).filter(id => links.has(id));
+  const otherIds = [...links.keys()].filter(id => !importantIds.includes(id));
+  const recommendations = new Map(links);
+  if (topic) {
+    recommendations.set(topic.compareWith, { type: '看照片', reason: '去另一处山地，找一找山峰和谷底。' });
+    recommendations.set('contour', { type: '看坡陡不陡', reason: '想象走一段山路，看看哪里升降最快。' });
+  }
+
   main.innerHTML = `
     ${breadcrumb(concept.title, safeOrigin, safeOrigin === '#/explore' ? '知识网' : '返回刚才的位置')}
-    ${pageIntro(concept.title, '', '知识卡 · ' + (lesson?.title || '世界地形'))}
-    <div class="lesson-shell"><div class="lesson-content">
-      <section class="panel">
-        <h2>是什么</h2><p>${escape(concept.text)}</p>
+    ${pageIntro(concept.title, '', '', 'concept-page-intro')}
+    <div class="concept-view">
+      ${topic?.photos?.length ? '<section class="panel photo-gallery" data-gallery aria-label="观察图片"></section>' : ''}
+      <section class="panel concept-summary">
+        <p>${escape(concept.text)}</p>
+        ${compareWith ? `<div class="actions"><a href="${labUrl('terrain', { site: concept.id, siteB: compareWith.id, fromConcept: concept.id, fromCard: currentCard })}" class="button primary">和${escape(compareWith.title)}比地形 ${arrow}</a></div>`
+          : directlyRelatedLab ? `<div class="actions"><a href="${labUrl(directlyRelatedLab.id, { fromConcept: concept.id, fromCard: currentCard })}" class="button primary">打开相关实验 ${arrow}</a></div>` : ''}
+      </section>
+      ${links.size ? `<section class="panel"><h2>接着看</h2>
+        <div class="stack concept-links">${relationshipLinks(importantIds, currentCard, recommendations)}</div>
+        ${otherIds.length ? `<details class="other-relations"><summary>更多联系（${otherIds.length}）</summary><div class="stack">${relationshipLinks(otherIds, currentCard, links)}</div></details>` : ''}
+      </section>` : ''}
+      <details class="panel concept-tools"><summary>查课本或收藏</summary>
         <div class="actions">
-          ${mountain || directlyRelatedLab ? `<a href="${mountain ? compare : labUrl(directlyRelatedLab.id)}" class="button primary">${mountain ? '和另一大洲比较' : '打开相关实验'} ${arrow}</a>` : ''}
           ${lesson ? `<a href="${lessonUrl(lesson.id)}" class="button">打开相关课次</a>` : ''}
           <button class="button" type="button" data-bookmark aria-pressed="${state.saved.includes(concept.id)}">${state.saved.includes(concept.id) ? '已收藏' : '收藏知识点'}</button>
         </div>
-      </section>
-      <section class="panel"><h2>从这里接着学</h2><div class="stack">${relationshipLinks([...links.keys()], safeOrigin === '#/explore' ? '#/concept/' + concept.id : safeOrigin, links)}</div></section>
-    </div><aside class="lesson-aside">
-      <section class="panel"><h2>查找其他知识</h2><a class="text-link" href="#/explore">打开知识网 ${arrow}</a></section>
-    </aside></div>`;
+      </details>
+    </div>`;
+  const gallery = main.querySelector('[data-gallery]');
+  if (gallery) cleanup = mountPhotoGallery(gallery, topic.photos, galleryPositions.get(concept.id), index => galleryPositions.set(concept.id, index));
   const bookmark = main.querySelector('[data-bookmark]');
   bookmark.addEventListener('click', () => {
     const saved = state.saved.includes(concept.id);
@@ -246,29 +264,67 @@ function showConcept(concept, query) {
   });
 }
 
+const searchableScenes = [
+  { title: '世界地形', text: '转动地球，找山脉、高原、平原和海底地形。', href: labUrl('globe', { mode: 'terrain' }) },
+  { title: '表层洋流', text: '看暖流、寒流和箭头。', href: labUrl('globe', { mode: 'circulation', flow: 'currents' }) },
+  { title: '东亚冬季风', text: '对比冬季和夏季吹风的方向。', href: labUrl('globe', { mode: 'circulation', flow: 'monsoon', season: 'winter' }) },
+  { title: '东亚夏季风', text: '观察夏季风怎样吹向陆地。', href: labUrl('globe', { mode: 'circulation', flow: 'monsoon', season: 'summer' }) },
+];
+
 function explore() {
   main.innerHTML = `
-    ${pageIntro('知识网', '从一个词、一个地点或一种读图方法出发。', '搜索与比较')}
+    ${pageIntro('知识网', '找一个地方，或者问一个读图问题。', '', 'concept-page-intro')}
     <div class="search-box">
       <label class="field-label" for="search">搜索地名、概念或课次</label>
-      <input class="search-input" type="search" id="search" placeholder="试试 喜马拉雅、等高线、降水">
+      <input class="search-input" type="search" id="search" placeholder="试试 喜马拉雅、坡陡、冬季风">
     </div>
     <div class="mini-actions" aria-label="常用查找">${['山脉', '气候', '经纬', '地图'].map(term => '<button class="chip" type="button" data-term="' + term + '">' + term + '</button>').join('')}</div>
-    <p class="results-label" id="results-count" aria-live="polite"></p><div id="results" class="grid"></div>`;
+    <p class="results-label" id="results-count" aria-live="polite"></p><div id="results" class="grid"></div>
+    <div class="actions"><button class="button" type="button" data-show-all>浏览全部知识点</button></div>`;
   const input = main.querySelector('#search');
   const result = main.querySelector('#results');
   const count = main.querySelector('#results-count');
+  const allButton = main.querySelector('[data-show-all]');
+  input.value = exploreState.query;
   const catalog = concepts.map(concept => ({
-    title: concept.title, text: concept.text, titleOfLesson: byLesson.get(concept.lessonId)?.title || '', href: conceptUrl(concept.id),
+    id: concept.id, title: concept.title, text: concept.text, titleOfLesson: byLesson.get(concept.lessonId)?.title || '', href: conceptUrl(concept.id),
+    aliases: concept.id === 'contour' ? '坡陡 坡缓 山坡有多陡 等高线怎么看坡度' : '',
   }));
-  const combined = catalog.concat(work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '课本', href: lessonUrl(lesson.id) })));
+  const combined = catalog.concat(
+    work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '课本', href: lessonUrl(lesson.id) })),
+    searchableScenes.map(scene => ({ ...scene, titleOfLesson: '转动地球仪' })),
+  );
+
   function search() {
+    exploreState.query = input.value;
     const term = input.value.trim().toLowerCase();
-    const hits = term ? combined.filter(item => [item.title, item.text, item.titleOfLesson].some(value => value.toLowerCase().includes(term))) : catalog;
-    count.textContent = hits.length ? `${hits.length} 个${term ? '结果' : '知识点'}` : '暂时找不到这个词。';
-    result.innerHTML = hits.map(item => `<a class="card" href="${item.href}"><h3>${escape(item.title)}</h3><p>${escape(item.text)}</p><span class="card-action">${escape(item.titleOfLesson)} ${arrow}</span></a>`).join('');
+    const parts = term.replaceAll(/(?:怎么看|怎么|如何|怎样)|[，、。？！；：,?!;:]+/g, ' ').split(/\s+/).filter(Boolean);
+    const featured = !term && !exploreState.showAll;
+    const hits = featured ? ['himalayas', 'alps', 'andes'].map(id => catalog.find(item => item.id === id))
+      : term ? combined.filter(item => {
+          const fields = [item.title, item.text, item.titleOfLesson, item.aliases || ''].join(' ').toLowerCase();
+          return parts.length && parts.every(part => fields.includes(part));
+        }).sort((a, b) => Number(b.title.includes(term)) - Number(a.title.includes(term))
+          || Number(b.title.startsWith(term)) - Number(a.title.startsWith(term)))
+      : catalog;
+    count.textContent = featured ? '先从一张照片开始' : hits.length ? `${hits.length} 个${term ? '结果' : '知识点'}` : '没找到。试试少写几个字，例如“坡度”。';
+    allButton.hidden = Boolean(term);
+    allButton.textContent = exploreState.showAll ? '收起目录' : '浏览全部知识点';
+    result.innerHTML = hits.map(item => {
+      const photo = topicViews[item.id]?.photos?.[0];
+      return `<a class="card ${photo ? 'topic-card' : ''}" href="${item.href}">
+        ${photo ? `<img src="./assets/gallery/${escape(photo.file)}" alt="" loading="lazy" decoding="async">` : ''}
+        <h3>${escape(item.title)}</h3>
+        <p>${escape(featured && photo ? photo.cue : item.text)}</p>
+        <span class="card-action">${escape(featured ? '看照片' : item.titleOfLesson)} ${arrow}</span></a>`;
+    }).join('');
   }
   input.addEventListener('input', search);
+  allButton.addEventListener('click', () => {
+    exploreState.showAll = !exploreState.showAll;
+    search();
+    count.scrollIntoView({ block: 'nearest' });
+  });
   for (const button of main.querySelectorAll('[data-term]')) button.addEventListener('click', () => {
     input.value = button.dataset.term;
     search();
@@ -388,8 +444,14 @@ function render() {
   else if (page === 'lab' && byLab.has(id)) {
     const lab = byLab.get(id);
     const from = query.get('from');
+    const originCard = byConcept.get(query.get('fromConcept'));
     const back = byLesson.get(from) || byLesson.get(lab.lessonId);
-    main.innerHTML = `${breadcrumb(lab.title, back ? lessonUrl(back.id) : '#/', back?.title ?? '课本')}
+    const fromCard = query.get('fromCard');
+    const cardUrl = originCard ? conceptUrl(originCard.id) : null;
+    const cardReturn = fromCard && fromCard.length < 220 && fromCard.startsWith(cardUrl + '?from=') ? fromCard : cardUrl;
+    const backUrl = originCard ? cardReturn : query.get('fromGlobe') === 'terrain' ? labUrl('globe', { mode: 'terrain' }) : back ? lessonUrl(back.id) : '#/';
+    const backLabel = originCard ? '返回' + originCard.title : query.get('fromGlobe') === 'terrain' ? '返回地球仪' : back?.title || '课本';
+    main.innerHTML = `${breadcrumb(lab.title, backUrl, backLabel)}
       ${pageIntro(lab.title, lab.description, '', 'lab-page-intro')}<div data-lab></div>
       <section class="panel"><h2>连到课本知识</h2><div class="grid">${relationshipLinks(lab.links, activeHash)}</div></section>`;
     cleanup = mountLabUI(main.querySelector('[data-lab]'), lab, query, state.labs[id], settings => {

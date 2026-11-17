@@ -1,0 +1,103 @@
+export const topicViews = {
+  himalayas: {
+    compareWith: 'alps',
+    photos: [
+      {
+        file: 'himalayas-everest.webp',
+        title: '在山脚看珠穆朗玛峰',
+        alt: '从绒布河谷望向珠穆朗玛峰北坡，雪和冰覆盖高处，山脚露出许多碎石。',
+        cue: '从山脚往上看，哪里开始出现大片的雪和冰？',
+        author: 'Luca Galuzzi · www.galuzzi.it',
+        source: 'https://commons.wikimedia.org/wiki/File:Everest_North_Face_toward_Base_Camp_Tibet_Luca_Galuzzi_2006.jpg',
+        license: ['CC BY-SA 2.5', 'https://creativecommons.org/licenses/by-sa/2.5/'],
+      },
+      {
+        file: 'himalayas-cho-la.webp',
+        title: '在垭口看冰川',
+        alt: '从尼泊尔 Cho La 垭口向东望，近处是覆雪的冰川，周围有深色岩壁。',
+        cue: '找一找：浅色的冰雪和深色的岩壁，各在画面的什么位置？',
+        author: 'Vyacheslav Argenberg',
+        source: 'https://commons.wikimedia.org/wiki/File:Himalayas,_Nepal.jpg',
+        license: ['CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/'],
+      },
+      {
+        file: 'himalayas-from-orbit.webp',
+        title: '从太空看整列山地',
+        alt: '国际空间站拍摄的斜视照片，成排的雪峰横过画面，前方是平原，远处是青藏高原。',
+        cue: '试着沿着一排白色山峰移动手指。山脉和一座山峰有什么不同？',
+        author: 'Earth Science and Remote Sensing Unit, NASA Johnson Space Center · ISS031-E-67020',
+        source: 'https://science.nasa.gov/earth/earth-observatory/himalayas-near-and-far-147980/',
+        license: ['NASA 图像使用指南', 'https://www.nasa.gov/nasa-brand-center/images-and-media/'],
+      },
+    ],
+  },
+  alps: {
+    compareWith: 'himalayas',
+    photos: [
+      {
+        file: 'alps-aletsch.webp',
+        title: '瑞士阿莱奇冰川',
+        alt: '白色冰流沿着两侧雪山之间的谷地弯曲。',
+        cue: '沿着白色冰带看一看：山谷向哪边弯？',
+        author: 'Tobias Alt（Tobi 87）',
+        source: 'https://commons.wikimedia.org/wiki/File:Aletschgletscher-Eggishorn.jpg',
+        license: ['CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/'],
+      },
+      {
+        file: 'alps-dolomites.webp',
+        title: '意大利多洛米蒂三峰',
+        alt: '几座浅色岩塔直立在云雾上方。',
+        cue: '从山顶往下看，哪一段岩壁最接近竖直？',
+        author: 'Wolfgang Moroder',
+        source: 'https://commons.wikimedia.org/wiki/File:Drei_Zinnen_Tre_Cime_di_Lavaredo_Dolomites.jpg',
+        license: ['CC BY-SA 3.0', 'https://creativecommons.org/licenses/by-sa/3.0/'],
+      },
+    ],
+  },
+  cordillera: {
+    compareWith: 'andes',
+    photos: [
+      {
+        file: 'cordillera-moraine.webp',
+        title: '加拿大落基山脉的莫雷恩湖',
+        alt: '连续的雪峰在树林和湖面后升起，湖里能看到山的倒影。',
+        cue: '从湖边的树林向上看，哪里明显变陡了？',
+        author: 'Gorgo',
+        source: 'https://commons.wikimedia.org/wiki/File:Moraine_Lake_17092005.jpg',
+        license: ['公有领域', 'https://commons.wikimedia.org/wiki/File:Moraine_Lake_17092005.jpg'],
+      },
+      {
+        file: 'cordillera-grand-canyon.webp',
+        title: '北美西部的科罗拉多大峡谷',
+        alt: '红褐色的阶梯状峡谷切入较平缓的高原表面。',
+        cue: '先找较平的高原顶部，再顺着两侧岩壁往谷底看。',
+        author: 'Ron Clausen',
+        source: 'https://commons.wikimedia.org/wiki/File:Grand_Canyon_view_South_Rim.jpg',
+        license: ['CC0 1.0', 'https://creativecommons.org/publicdomain/zero/1.0/'],
+      },
+    ],
+  },
+  andes: {
+    compareWith: 'cordillera',
+    photos: [
+      {
+        file: 'andes-aconcagua.webp',
+        title: '从南侧看阿空加瓜山',
+        alt: '阿根廷安第斯山地航拍，高峰有积雪，前方有裸露的山脊和深谷。',
+        cue: '白色积雪主要在哪一带？再找一条没有被雪遮住的山脊。',
+        author: 'Dropus',
+        source: 'https://commons.wikimedia.org/wiki/File:Aconcagua_Mountain_from_the_south.jpg',
+        license: ['CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/'],
+      },
+      {
+        file: 'andes-urubamba.webp',
+        title: '秘鲁乌鲁班巴河谷',
+        alt: '乌鲁班巴河沿山谷底部流过，岸边有道路和桥。',
+        cue: '沿河找一找，桥和道路大多在山脚还是山顶？',
+        author: 'David Berkowitz',
+        source: 'https://commons.wikimedia.org/wiki/File:Urubamba_river_-_Machu_Picchu_and_Sacred_Valley_Peru_(4876196508).jpg',
+        license: ['CC BY 2.0', 'https://creativecommons.org/licenses/by/2.0/'],
+      },
+    ],
+  },
+};

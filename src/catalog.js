@@ -52,7 +52,7 @@ const distinction = '易混辨析';
 
 // Each teaching relationship appears from both endpoints.
 const relationships = [
-  ['himalayas', 'alps', compare, '从亚洲跳到欧洲，用同一套高程色阶比较山地和附近低地。'],
+  ['himalayas', 'alps', compare, '用同一套高程色阶，比较亚洲和欧洲的山地与附近低地。'],
   ['himalayas', 'cordillera', compare, '在亚洲和北美洲各选一段剖面，比较高地与周边的落差。'],
   ['himalayas', 'andes', compare, '在亚洲和南美洲各找一列高山，比较山脉与低地、海岸的相对位置。'],
   ['alps', 'cordillera', compare, '到欧洲和北美洲各读一段地形剖面，找两处山地结构的不同。'],
@@ -176,7 +176,7 @@ export const labs = [
     id: 'contour',
     title: '给山坡切一刀',
     icon: '⌁',
-    description: '换条剖切线，比较两段坡道的高低和陡缓。',
+    description: '想象自己在走山路。换一条路，看看哪里像陡坡。',
     lessonId: 'contours',
     links: ['contour', 'terrain-profile', 'elevation', 'relative-height'],
     caption: '同一个虚构地貌可以显示为三维地表、等高线和剖面。',
