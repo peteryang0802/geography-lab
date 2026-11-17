@@ -97,6 +97,7 @@ function validChoice(choices, value, fallback) {
 
 function tableView(headings) {
   const details = node('details', 'chart-matrix');
+  details.dataset.remember = 'widget-data';
   const table = node('table', 'data-table');
   const header = node('thead');
   const headerRow = node('tr');
@@ -108,7 +109,7 @@ function tableView(headings) {
   header.append(headerRow);
   const body = node('tbody');
   table.append(header, body);
-  details.append(node('summary', '', '查看原始数据'), table);
+  details.append(node('summary', '', '查看示例数据'), table);
   return {
     details,
     setRows(rows) {
@@ -238,10 +239,7 @@ function climateWidget(host, initial, onChange) {
   const chart = chartView((context, width, height) => {
     drawClimate(context, width, height, CLIMATES[state.profile], state.month - 1);
   });
-  host.append(
-    node('p', '', '换一个地点或月份。用折线读左侧气温，用柱形读右侧降水。数据为教学示例。'),
-    controls, reading, chart.canvas, table.details,
-  );
+  host.append(chart.canvas, controls, reading, table.details);
 
   function render() {
     const { name, temperature, rain } = CLIMATES[state.profile];
@@ -311,10 +309,7 @@ function weatherWidget(host, initial, onChange) {
   const chart = chartView((context, width, height) => {
     drawWeather(context, width, height, DAYS[state.day], index());
   });
-  host.append(
-    node('p', '', '切换模拟预报，比较同一天的几个时段。用天气、温度和预警安排活动。'),
-    controls, reading, chart.canvas, table.details,
-  );
+  host.append(chart.canvas, controls, reading, table.details);
 
   function render() {
     const day = DAYS[state.day];
@@ -380,10 +375,7 @@ function populationWidget(host, initial, onChange) {
   const chart = chartView((context, width, height) => {
     drawPopulation(context, width, height, selected());
   });
-  host.append(
-    node('p', '', '任选两个模拟地区。用各地人数除以面积，再比较谁住得更密集。'),
-    controls, reading, chart.canvas, table.details,
-  );
+  host.append(chart.canvas, controls, reading, table.details);
 
   function render() {
     const [first, second] = selected();

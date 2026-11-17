@@ -132,14 +132,15 @@ function drawMapFlow(ctx, bounds, config) {
   }
 }
 
-function drawMapSites(ctx, bounds) {
+function drawMapSites(ctx, bounds, focus) {
   font(ctx, 10, 750);
   ctx.textAlign = 'center';
-  for (const [index, site] of Object.values(TERRAIN_SITES).entries()) {
+  for (const [index, [id, site]] of Object.entries(TERRAIN_SITES).entries()) {
     const x = lonX(bounds, site.lon);
     const y = latY(bounds, site.lat);
-    dot(ctx, x, y, 7.6, '#23464c', '#fff1b9');
-    ctx.fillStyle = '#fff5d3';
+    const selected = id === focus;
+    dot(ctx, x, y, selected ? 8.8 : 7.6, selected ? '#ffd071' : '#23464c', selected ? '#572a12' : '#fff1b9');
+    ctx.fillStyle = selected ? '#572a12' : '#fff5d3';
     ctx.fillText(String(index + 1), x, y + 0.4);
   }
 }
@@ -202,10 +203,15 @@ function makeGlobePainter(schedule) {
       const observationY = latY(bounds, lat);
       dot(ctx, observationX, observationY, 5.3, '#fff4cf', '#17464b');
       dot(ctx, observationX, observationY, 1.8, '#17464b', '#17464b');
+      if (mode === 'daylight' && config.dayPair && lat !== 0) {
+        const oppositeY = latY(bounds, -lat);
+        dot(ctx, observationX, oppositeY, 5.3, '#fff4cf', '#17464b');
+        dot(ctx, observationX, oppositeY, 1.8, '#17464b', '#17464b');
+      }
     }
     if (mode === 'terrain') {
       if (relief) ctx.drawImage(relief, x, y, w, h);
-      drawMapSites(ctx, bounds);
+      drawMapSites(ctx, bounds, config.terrainFocus);
     }
     if (mode === 'circulation') drawMapFlow(ctx, bounds, config);
     ctx.restore();
@@ -455,7 +461,7 @@ export function mountFlat(host, kind, config = {}) {
       if (selected) active.onTerrainPick?.(selected);
       return;
     }
-    if (active.mode && active.mode !== 'coordinates') return;
+    if (active.mode && active.mode !== 'coordinates' && active.mode !== 'daylight') return;
     const lon = (x - bounds.x) * 360 / bounds.width - 180;
     const lat = 90 - (y - bounds.y) * 180 / bounds.height;
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
@@ -469,7 +475,7 @@ export function mountFlat(host, kind, config = {}) {
   function update(delta) {
     if (disposed) return;
     active = { ...active, ...delta };
-    const pickingCoordinates = (!active.mode || active.mode === 'coordinates') && active.onCoordinatePick;
+    const pickingCoordinates = (!active.mode || active.mode === 'coordinates' || active.mode === 'daylight') && active.onCoordinatePick;
     const pickingSite = active.mode === 'terrain' && active.onTerrainPick;
     canvas.style.cursor = kind === 'globe' && (pickingCoordinates || pickingSite) ? 'crosshair' : 'default';
     schedule();

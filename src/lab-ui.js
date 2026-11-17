@@ -1,5 +1,5 @@
-import { contourProfile, sunlightAt, TERRAIN_SITES } from './geo-model.js';
-import { mountFlat } from './flat.js';
+import { contourProfile, sunlightAt, TERRAIN_SITES, TO_RADIANS } from './geo-model.js';
+import { mountFlat } from './flat.js?v=2';
 import { FLOW_NOTES, getFlowPaths } from './flow-model.js';
 
 const defaultsByLab = {
@@ -26,6 +26,11 @@ function coordinates(lat, lon) {
   return `${label(lat, 'N', 'S')}，${label(lon, 'E', 'W')}`;
 }
 
+function daylightHours(lat, declination) {
+  const cosHourAngle = -Math.tan(lat * TO_RADIANS) * Math.tan(declination * TO_RADIANS);
+  return Math.round(24 * Math.acos(Math.max(-1, Math.min(1, cosHourAngle))) / Math.PI);
+}
+
 function clipSettings(kind, saved, params) {
   const initial = defaultsByLab[kind];
   const entryKey = params.toString();
@@ -36,9 +41,15 @@ function clipSettings(kind, saved, params) {
     flat: (saved?.flat ?? initial.flat) === true || navigator.connection?.saveData === true,
     evidenceOpen: saved?.evidenceOpen === true,
   };
+  const cameraPose = saved?.cameraPose;
+  if (!isNewEntry && Array.isArray(cameraPose?.direction) && cameraPose.direction.length === 3 &&
+      cameraPose.direction.every(Number.isFinite) && cameraPose.direction.some(Boolean) && Number.isFinite(cameraPose.zoom)) {
+    state.cameraPose = cameraPose;
+  }
   if (kind === 'globe') {
     state.pointLat = numeric(saved?.pointLat ?? saved?.lat, initial.pointLat, -90, 90);
     state.pointLon = numeric(saved?.pointLon ?? saved?.lon, initial.pointLon, -180, 180);
+    state.dayPair = saved?.dayPair === true;
     state.lat = numeric(saved?.lat, state.pointLat, -90, 90);
     state.lon = numeric(saved?.lon, state.pointLon, -180, 180);
     state.hour = numeric(saved?.hour, initial.hour, 0, 23);
@@ -101,9 +112,13 @@ const controls = (kind, settings) => {
       <button type="button" class="chip" data-point="0,0">赤道与 0° 经线</button>
       <button type="button" class="chip" data-point="-33,151">南半球示例</button>
     </div>
+    <div class="mini-actions" aria-label="昼夜实验选项" data-day-points hidden>
+      <button type="button" class="chip" data-point="40,116">北京附近</button>
+      <button type="button" class="chip" data-day-pair aria-pressed="false">比南北昼长</button>
+    </div>
     <div class="control-pair" data-globe-terrain hidden>
       <div class="control-group"><label for="terrain-focus">找一处山地</label><select id="terrain-focus" data-terrain-focus>${sites.map(([id, site]) => `<option value="${id}">${site.name}</option>`).join('')}</select></div>
-      <div class="dock-link"><a class="button" data-compare-terrain href="#/lab/terrain">并排比较山地 →</a></div>
+      <div class="dock-link"><a class="button" data-terrain-knowledge>山地照片 →</a></div>
     </div>
     <div data-globe-flows hidden>
       <div class="control-pair">
@@ -150,14 +165,16 @@ const challenges = {
   },
 };
 
-function challengeHtml(kind) {
+function challengeHtml(kind, inline) {
   const task = challenges[kind];
-  return `<section class="panel"><h2>${task.title}</h2><p>${task.prompt}</p>
+  const answers = `<p>${task.prompt}</p>
     <div class="options" role="group" aria-label="实验结论">${task.options.map((option, i) => `<button type="button" class="option" data-lab-answer="${i}" aria-pressed="false">${option}</button>`).join('')}</div>
-    <p class="feedback" data-lab-feedback role="status" hidden></p></section>`;
+    <p class="feedback" data-lab-feedback role="status" hidden></p>`;
+  return inline ? `<details class="panel"><summary>${task.title}</summary>${answers}</details>`
+    : `<section class="panel"><h2>${task.title}</h2>${answers}</section>`;
 }
 
-export function mountLabUI(host, lab, params, saved, onChange) {
+export function mountLabUI(host, lab, params, saved, onChange, { inline = false, origin = location.hash } = {}) {
   const kind = lab.id;
   let settings = clipSettings(kind, saved, params);
   const challenge = challenges[kind];
@@ -165,6 +182,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
   const sameExercise = kind !== 'contour' || saved?.exerciseVersion === settings.exerciseVersion;
   if (sameExercise && Number.isInteger(saved?.answer) && saved.answer >= 0 && saved.answer < challenge.options.length) settings.answer = saved.answer;
   host.dataset.labKind = kind;
+  if (inline) host.dataset.labInline = '';
   let disposed = false;
   let loadVersion = 0;
   let activeMode = 'flat';
@@ -204,7 +222,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
         ${kind === 'globe' ? '<p data-overlay-links></p>' : ''}
       </details>
     </div>
-    <div class="lab-followup" data-challenge>${challengeHtml(kind)}</div>`;
+    <div class="lab-followup" data-challenge>${challengeHtml(kind, inline)}</div>`;
 
   const stage = host.querySelector('[data-stage-state]');
   const sceneHost = host.querySelector('.scene-host');
@@ -212,7 +230,6 @@ export function mountLabUI(host, lab, params, saved, onChange) {
   const switcher = host.querySelector('[data-toggle-view]');
   const rotation = host.querySelector('[data-rotate]');
   const turn = host.querySelector('[data-turn]');
-  const walk = host.querySelector('[data-walk]');
   const evidence = host.querySelector('.lab-evidence');
   evidence.open = settings.evidenceOpen;
   const reading = host.querySelector('[data-reading]');
@@ -229,14 +246,15 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     for (const button of host.querySelectorAll('[data-section]')) button.setAttribute('aria-pressed', String(button.dataset.section === settings.section));
     if (kind === 'globe') {
       host.querySelector('[data-coordinate-controls]').hidden = settings.mode !== 'coordinates';
-      host.querySelector('[data-globe-points]').hidden = !['coordinates', 'daylight'].includes(settings.mode);
+      host.querySelector('[data-globe-points]').hidden = settings.mode !== 'coordinates';
+      host.querySelector('[data-day-points]').hidden = settings.mode !== 'daylight';
+      host.querySelector('[data-day-pair]').setAttribute('aria-pressed', String(settings.dayPair));
       host.querySelector('[data-globe-daylight]').hidden = settings.mode !== 'daylight';
       host.querySelector('[data-globe-terrain]').hidden = settings.mode !== 'terrain';
       host.querySelector('[data-globe-flows]').hidden = settings.mode !== 'circulation';
       host.querySelector('[data-current-controls]').hidden = settings.flow !== 'currents';
       host.querySelector('[data-season-controls]').hidden = settings.flow !== 'monsoon';
       host.querySelector('[data-terrain-focus]').value = settings.terrainFocus;
-      host.querySelector('[data-compare-terrain]').href = '#/lab/terrain?' + new URLSearchParams({ site: settings.terrainFocus, fromGlobe: 'terrain' });
       host.querySelector('[data-flow]').value = settings.flow;
       host.querySelector('[data-current]').value = settings.currentId;
       host.querySelector('[data-season]').value = settings.season;
@@ -254,11 +272,13 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       if (settings.mode === 'terrain') {
         const site = TERRAIN_SITES[settings.terrainFocus];
         live.textContent = `${site.region} · ${site.name} · ${coordinates(site.lat, site.lon)}`;
-        reading.textContent = '陆地和海底的明暗显示地形纹理，蓝绿色区分海洋。选一个山地，看标记附近的陆地起伏。查看定量高程范围时，请使用教材里的分层设色地形图。';
+        reading.textContent = '选一处山地，看看标记附近的陆地哪里起伏最明显。图上的明暗让起伏更容易看见。读具体海拔时，可以翻教材的分层设色地形图。';
+        const knowledge = host.querySelector('[data-terrain-knowledge]');
+        knowledge.href = '#/concept/' + settings.terrainFocus + '?' + new URLSearchParams({ from: origin });
         const link = document.createElement('a');
-        link.href = '#/concept/' + settings.terrainFocus + '?from=' + encodeURIComponent(window.location.hash);
+        link.href = '#/lab/terrain?' + new URLSearchParams({ site: settings.terrainFocus, fromGlobe: 'terrain', returnTo: origin });
         link.className = 'text-link';
-        link.textContent = site.name + '知识卡 →';
+        link.textContent = '并排比较两处山地 →';
         overlayLinks.append(link);
       } else if (settings.mode === 'circulation') {
         const path = settings.flow === 'monsoon' ? getFlowPaths('monsoon', settings.season)[0] : currents.find(item => item.id === settings.currentId);
@@ -277,8 +297,17 @@ export function mountLabUI(host, lab, params, saved, onChange) {
         overlayLinks.append(link);
       } else if (settings.mode === 'daylight') {
         const sun = sunlightAt(settings.lat, settings.lon, settings.hour, settings.month);
-        live.textContent = `${location} · ${sun.lit ? '在亮面' : '在暗面'} · 直射约 ${Math.abs(sun.declination).toFixed(1)}° ${sun.declination >= 0 ? 'N' : 'S'}`;
-        reading.textContent = '时刻使用 UTC，UTC 加 8 小时得到北京时间。模型以各月中旬近似当月的太阳照射情况。';
+        if (settings.dayPair && settings.lat !== 0) {
+          const latitude = Math.abs(settings.lat);
+          const north = daylightHours(latitude, sun.declination);
+          const south = daylightHours(-latitude, sun.declination);
+          live.textContent = `北纬 ${latitude}° 约 ${north} 小时白天 · 南纬 ${latitude}° 约 ${south} 小时白天`;
+        } else {
+          live.textContent = `${location} · ${sun.lit ? '在亮面' : '在暗面'} · 直射约 ${Math.abs(sun.declination).toFixed(1)}° ${sun.declination >= 0 ? 'N' : 'S'}`;
+        }
+        reading.textContent = settings.dayPair
+          ? '两个点经度相同，分别在赤道南北。把月份从 6 月拨到 12 月，看看哪里白天更长。数字按各月中旬的日照取整。'
+          : '拨动时刻，看地点什么时候转到亮面。这里的时刻用世界时（UTC），加 8 小时就是北京时间。';
       } else {
         live.textContent = `当前坐标 ${location}`;
         reading.textContent = '纬度用来比较南北位置，经度用来比较东西位置。两条线的交点可以帮你找到这个点。';
@@ -289,10 +318,11 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       const maxJump = Math.round(Math.max(...elevations.slice(1).map((value, i) => Math.abs(value - elevations[i]))));
       const route = settings.section === 'ab' ? 'A 到 B' : 'C 到 D';
       const point = samples[settings.walkStep];
+      const previous = samples[Math.max(0, settings.walkStep - 1)];
+      const gain = point.elevation - previous.elevation;
+      const slope = settings.walkStep === 0 ? '起点' : gain > 0 ? `前一段升高 ${gain} 米` : gain < 0 ? `前一段降低 ${-gain} 米` : '前一段差不多是平路';
       host.querySelector('[data-walk-distance]').textContent = '· ' + point.distance.toFixed(1) + ' 千米';
-      live.textContent = activeMode === 'three'
-        ? `${route} · 看亮线穿过了山的哪里`
-        : `${route} · 脚下约 ${Math.round(point.elevation)} 米`;
+      live.textContent = `${route} · ${slope} · 脚下约 ${point.elevation} 米`;
       reading.textContent = `侧面图的线表示沿路的高低，这就是地形剖面图。两条路在模型中都长约 9.6 千米。在当前路线，同样走约 0.8 千米，最大高差约 ${maxJump} 米。`;
     } else {
       const a = TERRAIN_SITES[settings.siteA];
@@ -303,7 +333,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       links.replaceChildren(...[settings.siteA, settings.siteB].map(id => {
         const link = document.createElement('a');
         link.className = 'text-link';
-        link.href = '#/concept/' + id + '?from=' + encodeURIComponent(location.hash);
+        link.href = '#/concept/' + id + '?' + new URLSearchParams({ from: origin });
         link.textContent = TERRAIN_SITES[id].name + '知识卡 →';
         link.style.marginRight = '12px';
         return link;
@@ -327,6 +357,12 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     flat?.update(sceneConfig());
   }
 
+  function saveCamera(cameraPose) {
+    if (disposed || !cameraPose) return;
+    settings = { ...settings, cameraPose };
+    onChange(settings);
+  }
+
   function sceneConfig() {
     return {
       ...settings,
@@ -335,6 +371,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
         if (!disposed) useFlat('3D 已中断，已恢复为平面视图。');
       },
       onCoordinatePick: ({ lat, lon }) => changePoint(Math.round(lat), Math.round(lon)),
+      onCameraChange: saveCamera,
       onTerrainPick: ({ id }) => {
         if (siteIds.includes(id)) setGlobeFocus({ terrainFocus: id });
       },
@@ -343,6 +380,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
 
   function useFlat(message = '平面视图') {
     loadVersion += 1;
+    saveCamera(three?.captureCamera());
     three?.dispose();
     three = null;
     activeMode = 'flat';
@@ -353,12 +391,11 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     switcher.textContent = kind === 'contour' ? '看 3D 山坡' : '开启 3D';
     rotation.hidden = true;
     if (turn) turn.hidden = true;
-    if (walk) walk.hidden = false;
     stage.textContent = kind === 'contour' && message === '平面视图' ? '从上看 · 从侧面看' : message;
     syncControls();
   }
 
-  async function useThree() {
+  async function useThree(focusControls = true) {
     const version = ++loadVersion;
     stage.textContent = '正在加载 3D，可先操作平面视图。';
     switcher.textContent = '继续用平面';
@@ -367,7 +404,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       if (!disposed && version === loadVersion) useFlat('3D 加载较慢，正在使用平面视图。');
     }, 7500);
     try {
-      const { mountScene } = await import('./scenes.js');
+      const { mountScene } = await import('./scenes.js?v=2');
       if (disposed || version !== loadVersion) return;
       sceneHost.hidden = false;
       three = mountScene(sceneHost, kind, sceneConfig());
@@ -380,9 +417,8 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       switcher.textContent = kind === 'contour' ? '看侧面' : '切换平面';
       rotation.hidden = !rotatable;
       if (turn) turn.hidden = false;
-      if (walk) walk.hidden = true;
       syncControls();
-      requestAnimationFrame(() => {
+      if (focusControls) requestAnimationFrame(() => {
         if (!disposed && activeMode === 'three') fitControls();
       });
       rotation.setAttribute('aria-pressed', String(touchEnabled));
@@ -394,9 +430,13 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     }
   }
 
-  function change(partial) {
+  function change(partial, keepView = false) {
+    if (['lat', 'lon', 'mode', 'viewYaw', 'dayPair'].some(key => Object.hasOwn(partial, key) && partial[key] !== settings[key])) {
+      partial = { ...partial, cameraPose: keepView ? three?.captureCamera() ?? settings.cameraPose : undefined };
+    }
     settings = { ...settings, ...partial };
     notifySettings();
+    if (keepView && settings.cameraPose) three?.restoreCamera(settings.cameraPose);
   }
 
   function setGlobeFocus(partial) {
@@ -424,17 +464,23 @@ export function mountLabUI(host, lab, params, saved, onChange) {
   }
 
   for (const button of host.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {
-    setGlobeFocus({ mode: button.dataset.mode });
+    change({ mode: button.dataset.mode }, true);
     fitControls();
   });
   for (const button of host.querySelectorAll('[data-point]')) button.addEventListener('click', () => {
     const [lat, lon] = button.dataset.point.split(',').map(Number);
     change({ lat, lon, pointLat: lat, pointLon: lon, viewYaw: 0 });
   });
+  host.querySelector('[data-day-pair]')?.addEventListener('click', () => {
+    const dayPair = !settings.dayPair;
+    if (dayPair && settings.lat === 0) change({ dayPair, lat: 40, pointLat: 40 });
+    else change({ dayPair });
+    fitControls();
+  });
   host.querySelector('[data-terrain-focus]')?.addEventListener('change', event => setGlobeFocus({ terrainFocus: event.target.value }));
   host.querySelector('[data-flow]')?.addEventListener('change', event => setGlobeFocus({ flow: event.target.value }));
   host.querySelector('[data-current]')?.addEventListener('change', event => setGlobeFocus({ currentId: event.target.value }));
-  host.querySelector('[data-season]')?.addEventListener('change', event => setGlobeFocus({ season: event.target.value }));
+  host.querySelector('[data-season]')?.addEventListener('change', event => change({ season: event.target.value }));
   for (const button of host.querySelectorAll('[data-section]')) button.addEventListener('click', () => change({ section: button.dataset.section }));
   for (const input of host.querySelectorAll('[data-site]')) input.addEventListener('change', () => {
     const key = input.dataset.site;
@@ -463,7 +509,7 @@ export function mountLabUI(host, lab, params, saved, onChange) {
   syncControls();
   onChange(settings);
   useFlat();
-  if (!settings.flat) useThree();
+  if (!settings.flat) useThree(!inline);
 
   return () => {
     disposed = true;

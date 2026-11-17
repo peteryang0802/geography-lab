@@ -189,7 +189,8 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
     new THREE.MeshBasicMaterial({ color: '#fff4b9', side: THREE.DoubleSide, opacity: 0.92, transparent: true }),
   );
   marker.add(point, halo);
-  scene.add(marker);
+  const pairedMarker = marker.clone();
+  scene.add(marker, pairedMarker);
   const siteMarkers = makeGlobeSites();
   scene.add(siteMarkers);
 
@@ -236,7 +237,7 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
     const { x, y } = pointerDown;
     pointerDown = null;
     const mode = activeConfig.mode ?? 'coordinates';
-    if (mode !== 'coordinates' && mode !== 'terrain') return;
+    if (mode !== 'coordinates' && mode !== 'daylight' && mode !== 'terrain') return;
     if (Math.hypot(x - event.clientX, y - event.clientY) > 7) return;
     const rect = canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height);
@@ -274,17 +275,24 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
     update(config) {
       activeConfig = config;
       const { lat = 40, lon = 116, hour = 6, month = 6, viewYaw = 0, mode } = config;
-      const aim = [lat, lon, viewYaw].join(':');
+      const daylight = mode === 'daylight';
+      const terrain = mode === 'terrain';
+      const aimLat = daylight && config.dayPair ? 0 : lat;
+      const aim = [mode, aimLat, lon, viewYaw].join(':');
       if (aim !== previousAim) {
-        makeGlobeCameraView(camera, controls, lat, lon, viewYaw);
+        makeGlobeCameraView(camera, controls, aimLat, lon, viewYaw);
         previousAim = aim;
       }
       const direction = coordinateVector(lat, lon);
       marker.position.copy(direction).multiplyScalar(1.029);
       marker.quaternion.setFromUnitVectors(SURFACE_NORMAL, direction);
+      pairedMarker.visible = daylight && config.dayPair && lat !== 0;
+      if (pairedMarker.visible) {
+        const opposite = coordinateVector(-lat, lon);
+        pairedMarker.position.copy(opposite).multiplyScalar(1.029);
+        pairedMarker.quaternion.setFromUnitVectors(SURFACE_NORMAL, opposite);
+      }
 
-      const daylight = mode === 'daylight';
-      const terrain = mode === 'terrain';
       const circulation = mode === 'circulation';
       const coordinates = !mode || mode === 'coordinates';
       if (terrain) enableRelief();
@@ -297,6 +305,12 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
       sunSpot.visible = daylight;
       marker.visible = daylight || coordinates;
       siteMarkers.visible = terrain;
+      if (terrain) {
+        Object.keys(TERRAIN_SITES).forEach((id, index) => {
+          const size = id === config.terrainFocus ? 0.235 : 0.15;
+          siteMarkers.children[index].scale.set(size, size, 1);
+        });
+      }
       equatorRing.visible = daylight || coordinates;
       polarAxis.visible = daylight || coordinates;
       if (circulation) {
@@ -500,12 +514,20 @@ function installContour(scene) {
   );
   const ab = makeSectionTrace('ab');
   const cd = makeSectionTrace('cd');
-  scene.add(ab, cd);
+  const walker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 16, 10),
+    new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
+  );
+  scene.add(ab, cd, walker);
   addLandscapeLights(scene);
   return {
     update(config) {
-      ab.visible = config.section !== 'cd';
-      cd.visible = config.section === 'cd';
+      const section = config.section === 'cd' ? 'cd' : 'ab';
+      const step = THREE.MathUtils.clamp(Math.round(config.walkStep ?? 0), 0, 12);
+      const { distance, elevation } = contourProfile(section, 13)[step];
+      ab.visible = section === 'ab';
+      cd.visible = section === 'cd';
+      walker.position.set(distance - SECTION_HALF_LENGTH, elevation / CONTOUR_RATIO + 0.14, SECTION_POSITIONS[section]);
     },
   };
 }
@@ -645,6 +667,7 @@ export function mountScene(host, kind, config = {}) {
   let disposed = false;
   let pendingFrame = 0;
   let fitDistance = 0;
+  let startingPose;
 
   function schedule() {
     if (disposed || pendingFrame) return;
@@ -708,6 +731,38 @@ export function mountScene(host, kind, config = {}) {
     schedule();
   }
 
+  function captureCamera() {
+    const offset = camera.position.clone().sub(controls.target);
+    const zoom = camera.isOrthographicCamera ? camera.zoom : offset.length() / (fitDistance || setup.radius * 3);
+    return { direction: offset.normalize().toArray(), zoom };
+  }
+
+  function restoreCamera({ direction, zoom }) {
+    const orthographic = camera.isOrthographicCamera;
+    const distance = orthographic ? camera.position.distanceTo(controls.target)
+      : (fitDistance || setup.radius * 3) * THREE.MathUtils.clamp(zoom, 0.64, 1.85);
+    if (orthographic) {
+      camera.zoom = THREE.MathUtils.clamp(zoom, controls.minZoom, controls.maxZoom);
+      camera.updateProjectionMatrix();
+    }
+    camera.position.set(...direction).normalize().multiplyScalar(distance).add(controls.target);
+    controls.update();
+  }
+
+  function beginCameraInteraction() {
+    startingPose = captureCamera();
+  }
+
+  function endCameraInteraction() {
+    if (!startingPose) return;
+    const pose = captureCamera();
+    if (Math.abs(pose.zoom - startingPose.zoom) > 0.001 ||
+        pose.direction.some((value, index) => Math.abs(value - startingPose.direction[index]) > 0.001)) {
+      active.onCameraChange?.(pose);
+    }
+    startingPose = null;
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
@@ -716,6 +771,8 @@ export function mountScene(host, kind, config = {}) {
     canvas.removeEventListener('webglcontextlost', onContextLost);
     canvas.removeEventListener('webglcontextrestored', onContextRestored);
     controls.removeEventListener('change', schedule);
+    controls.removeEventListener('start', beginCameraInteraction);
+    controls.removeEventListener('end', endCameraInteraction);
     controls.dispose();
     sceneController.dispose?.();
     disposeObject(scene);
@@ -725,11 +782,14 @@ export function mountScene(host, kind, config = {}) {
   }
 
   controls.addEventListener('change', schedule);
+  controls.addEventListener('start', beginCameraInteraction);
+  controls.addEventListener('end', endCameraInteraction);
   canvas.addEventListener('webglcontextlost', onContextLost);
   canvas.addEventListener('webglcontextrestored', onContextRestored);
   const observer = new ResizeObserver(resize);
   observer.observe(host);
   resize();
   update(config);
-  return { update, dispose };
+  if (config.cameraPose) restoreCamera(config.cameraPose);
+  return { update, dispose, captureCamera, restoreCamera };
 }

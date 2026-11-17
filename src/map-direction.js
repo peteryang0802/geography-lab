@@ -32,7 +32,7 @@ const examples = [
   },
 ];
 
-export function mountMapDirection(host) {
+export function mountMapDirection(host, saved, onChange = () => {}) {
   host.innerHTML = `
     <h2>看图找方向</h2>
     <div class="direction-modes" role="group" aria-label="地图示例">
@@ -78,8 +78,7 @@ export function mountMapDirection(host) {
     });
   }
 
-  tabs.forEach((tab, index) => tab.addEventListener('click', () => showExample(examples[index])));
-  points.forEach((point, index) => point.addEventListener('click', () => {
+  function pickDirection(index) {
     points.forEach((other, position) => {
       other.setAttribute('aria-pressed', String(position === index));
       rays[position].toggleAttribute('data-picked', position === index);
@@ -92,6 +91,15 @@ export function mountMapDirection(host) {
       const marker = active.id === 'north-arrow' ? '按图上的指向标，' : '';
       guide.textContent = `${marker}从起点向${name}，往图上的${active.labels[index]}方走。`;
     }
+  }
+  tabs.forEach((tab, index) => tab.addEventListener('click', () => {
+    showExample(examples[index]);
+    onChange({ example: active.id });
   }));
-  showExample(active);
+  points.forEach((point, index) => point.addEventListener('click', () => {
+    pickDirection(index);
+    onChange({ example: active.id, direction: index });
+  }));
+  showExample(examples.find(example => example.id === saved?.example) ?? active);
+  if (Number.isInteger(saved?.direction) && directions[saved.direction]) pickDirection(saved.direction);
 }
