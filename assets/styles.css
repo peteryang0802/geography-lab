@@ -292,6 +292,9 @@ details p { font-size: .91rem; }
 .walk-control input { accent-color: #9d5326; }
 @media (max-height: 365px) and (orientation: landscape) {
   .lab-layout .scene-host, .lab-layout .flat-host { height: clamp(104px, 32svh, 124px); }
+  .mode-strip { padding-inline: 7px; }
+  .mode-strip .chip, .stage-bar .button { font-size: .78rem; padding-inline: 7px; }
+  .stage-state { font-size: .77rem; }
   .lab-dock .lab-control { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; column-gap: 12px; }
   .lab-dock .mini-actions { gap: 4px; }
   .lab-dock .chip { padding-inline: 7px; }

@@ -382,6 +382,9 @@ export function mountLabUI(host, lab, params, saved, onChange) {
       if (turn) turn.hidden = false;
       if (walk) walk.hidden = true;
       syncControls();
+      requestAnimationFrame(() => {
+        if (!disposed && activeMode === 'three') fitControls();
+      });
       rotation.setAttribute('aria-pressed', String(touchEnabled));
       rotation.textContent = touchEnabled ? '恢复页面滑动' : '旋转场景';
     } catch {
@@ -412,13 +415,17 @@ export function mountLabUI(host, lab, params, saved, onChange) {
     else if (key === 'lon') changePoint(settings.lat, value);
     else change({ [key]: value });
   });
-  for (const button of host.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {
-    setGlobeFocus({ mode: button.dataset.mode });
+  function fitControls() {
     const workspace = host.querySelector('.lab-layout');
     const dock = host.querySelector('.lab-dock');
     const clipped = dock.getBoundingClientRect().bottom - innerHeight + 8;
     const start = workspace.getBoundingClientRect().top;
     if (clipped > 0 && start > 0) scrollBy(0, Math.min(clipped, start));
+  }
+
+  for (const button of host.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {
+    setGlobeFocus({ mode: button.dataset.mode });
+    fitControls();
   });
   for (const button of host.querySelectorAll('[data-point]')) button.addEventListener('click', () => {
     const [lat, lon] = button.dataset.point.split(',').map(Number);
