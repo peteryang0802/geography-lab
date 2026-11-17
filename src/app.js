@@ -4,6 +4,7 @@ import { mountWidget } from './widgets.js';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js';
 import { mountPhotoGallery } from './photo-gallery.js';
+import { mountMapDirection } from './map-direction.js';
 
 const main = document.querySelector('#content');
 const notice = document.querySelector('#announcement');
@@ -235,6 +236,7 @@ function showConcept(concept, query) {
     ${breadcrumb(concept.title, safeOrigin, safeOrigin === '#/explore' ? '知识网' : '返回刚才的位置')}
     ${pageIntro(concept.title, '', '', 'concept-page-intro')}
     <div class="concept-view">
+      ${concept.id === 'map-direction' ? '<section class="panel direction-panel" data-map-direction aria-label="地图方向示意"></section>' : ''}
       ${topic?.photos?.length ? '<section class="panel photo-gallery" data-gallery aria-label="观察图片"></section>' : ''}
       <section class="panel concept-summary">
         <p>${escape(concept.text)}</p>
@@ -252,6 +254,8 @@ function showConcept(concept, query) {
         </div>
       </details>
     </div>`;
+  const direction = main.querySelector('[data-map-direction]');
+  if (direction) mountMapDirection(direction);
   const gallery = main.querySelector('[data-gallery]');
   if (gallery) cleanup = mountPhotoGallery(gallery, topic.photos, galleryPositions.get(concept.id), index => galleryPositions.set(concept.id, index));
   const bookmark = main.querySelector('[data-bookmark]');
