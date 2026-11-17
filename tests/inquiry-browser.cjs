@@ -24,7 +24,10 @@ async function verifyLesson(page, id, next) {
   const lesson = page.locator('[data-inquiry-lesson="' + id + '"]');
   await lesson.waitFor();
   await lesson.locator('[data-activity]').first().locator('canvas, .direction-map').first().waitFor({ timeout: 10000 });
-  assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
+  if (id === 'land-ocean') {
+    assert.equal(await lesson.locator('.inquiry-copy').count(), 0, 'inline evidence replaces reading paragraphs');
+    assert.equal(await lesson.locator('.inquiry-picture-note img').count(), 2);
+  } else assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
   assert.ok((await lesson.locator(section('outside')).innerText()).includes('回到现实'));
   assert.equal(await lesson.locator('a:visible').count(), 1, id + ' visible exits');
   assert.equal(await lesson.locator('.next-lesson').getAttribute('href'), next ? '#/lesson/' + next : '#/textbook');
@@ -107,9 +110,35 @@ async function importantFlows(page) {
   await sameLabScreen(page);
 
   await go(page, '#/lesson/land-ocean');
-  await page.locator('.inquiry-world-controls select').selectOption('pacific');
-  assert.match(await page.locator('.inquiry-world-controls [role="status"]').innerText(), /太平洋/);
-  await page.locator('[data-activity="land-ocean-lab-globe"]').scrollIntoViewIfNeeded();
+  const world = page.locator('[data-world-activity]');
+  const map = world.locator('canvas');
+  await map.waitFor();
+  await world.locator('[data-world-reveal]').click();
+  assert.match(await world.locator('[data-world-feedback]').innerText(), /跨过太平洋/);
+  await world.locator('[data-world-route=atlantic]').click();
+  assert.doesNotMatch(await world.locator('[data-world-feedback]').innerText(), /大西洋/);
+  await world.locator('[data-world-reveal]').click();
+  assert.match(await world.locator('[data-world-feedback]').innerText(), /跨过大西洋/);
+  await world.locator('[data-world-labels]').click();
+  const labels = await map.getAttribute('aria-label');
+  for (const name of ['亚洲', '欧洲', '非洲', '北美洲', '南美洲', '大洋洲', '南极洲', '太平洋', '大西洋', '印度洋', '北冰洋']) {
+    assert.ok(labels.includes(name), name);
+  }
+  await world.locator('[data-world-labels]').click();
+
+  const landform = page.locator('[data-activity=land-ocean-landform]');
+  await landform.scrollIntoViewIfNeeded();
+  await landform.locator('[data-landform-spot=plateau]').click();
+  assert.match(await landform.locator('[data-landform-feedback]').innerText(), /高原|平缓|起伏小/);
+  const seafloor = page.locator('[data-activity=land-ocean-seafloor]');
+  await seafloor.scrollIntoViewIfNeeded();
+  await seafloor.locator('[data-seafloor-stop=slope]').click();
+  assert.match(await seafloor.locator('.seafloor-feedback').innerText(), /大陆坡/);
+  assert.equal(new URL(page.url()).hash, '#/lesson/land-ocean');
+  const globe = page.locator('.inquiry-optional-experiment');
+  assert.equal(await globe.getAttribute('open'), null);
+  assert.equal(await page.locator('[data-activity=land-ocean-lab-globe] canvas').count(), 0);
+  await globe.locator('summary').click();
   await page.locator('[data-terrain-focus]').selectOption('himalayas');
   await page.locator('[data-terrain-knowledge]').click();
   const gallery = page.locator('[data-inline-photos]');
@@ -121,6 +150,8 @@ async function importantFlows(page) {
   await page.reload();
   await page.locator('[data-activity="land-ocean-lab-globe"]').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector('[data-inline-photos] [data-count]')?.textContent === '3 / 3');
+  assert.equal(await world.getAttribute('data-world-active-route'), 'atlantic');
+  assert.equal(await world.getAttribute('data-world-revealed'), 'true');
   await checkWidth(page);
 
   await go(page, '#/concept/legend?from=%23%2Flesson%2Fmaps');

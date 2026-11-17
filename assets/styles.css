@@ -688,3 +688,55 @@ body { background: var(--inquiry-paper); }
 }
 .rain-inquiry [data-rain-test][aria-pressed="true"] { background: var(--inquiry-surface); color: var(--inquiry-accent); }
 .rain-inquiry [data-rain-test][aria-pressed="true"] + [data-rain-drain][aria-pressed="false"] { background: var(--inquiry-accent); border-color: var(--inquiry-accent); color: #fff; }
+
+/* Land and sea are read in the figures they describe. */
+.inquiry-picture-pair { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.inquiry-picture-note { margin: 0; min-width: 0; }
+.inquiry-picture-note img { display: block; width: 100%; height: auto; border-radius: 12px; background: #e4edf0; }
+.inquiry-picture-note figcaption { padding-top: 6px; font-size: .9rem; color: var(--ink); }
+.inquiry-picture-note small { display: block; margin-top: 4px; font-size: .74rem; }
+.inquiry-optional-experiment {
+  background: var(--inquiry-surface); border: 1px solid var(--line); border-radius: 12px; padding-inline: 13px;
+}
+.inquiry-optional-experiment > summary { color: var(--inquiry-accent); font-weight: 690; }
+.inquiry-optional-experiment[open] { padding-bottom: 10px; }
+.inquiry-optional-experiment[open] > summary { margin-bottom: 6px; }
+.ocean-life {
+  background: var(--inquiry-surface); border: 1px solid var(--line); border-radius: 14px;
+  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: center;
+  gap: 12px; padding: 10px; margin-bottom: 15px;
+}
+.ocean-life figcaption { padding-top: 0; }
+.ocean-life p { margin-top: 5px; }
+.ocean-water-path { display: flex; align-items: center; flex-wrap: wrap; gap: 1px 6px; color: var(--green); font-size: .82rem; }
+.seafloor-controls { gap: 5px; }
+.seafloor-controls .chip { flex: 1 0 auto; }
+@media (max-width: 700px) {
+  .inquiry-picture-pair { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .inquiry-picture-pair .inquiry-picture-note img { max-height: 170px; object-fit: cover; object-position: center 52%; }
+  .ocean-life { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .ocean-life img { max-height: 155px; object-fit: cover; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .inquiry-picture-pair { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .inquiry-picture-pair .inquiry-picture-note img { max-height: 156px; object-fit: cover; }
+}
+.world-route-controls {
+  grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: start;
+}
+.seafloor-controls { display: flex; flex-wrap: wrap; margin-block: 6px; }
+.seafloor-feedback { margin-top: 6px; }
+@media (max-height: 500px) and (orientation: landscape) {
+  .inquiry-world-activity, .seafloor-inquiry {
+    display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(155px, 1fr); gap: 5px 12px; align-items: start;
+  }
+  .inquiry-world-activity .world-ratio { grid-column: 1 / -1; }
+  .inquiry-world-activity .world-route-controls { margin-top: 0; }
+  .seafloor-inquiry .seafloor-figure { grid-row: span 2; }
+  .seafloor-inquiry .seafloor-controls, .seafloor-inquiry .seafloor-feedback { grid-column: 2; margin-block: 0; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .inquiry-picture-pair .landform-inquiry { display: block; }
+  .inquiry-picture-pair .landform-spots { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 7px; }
+  .inquiry-picture-pair .landform-inquiry [data-landform-feedback] { margin-top: 5px; }
+}

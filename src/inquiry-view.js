@@ -83,17 +83,32 @@ function evidenceReading(entry, data, view, extra) {
   </section>`;
 }
 
+function oceanLifeFigure() {
+  return `<figure class="inquiry-picture-note ocean-life" data-inquiry-section="ocean-life">
+    <img src="./assets/evidence/fishing-vessel.webp" width="640" height="427"
+      alt="傍晚的阿拉斯加港湾，渔船停在岸边" loading="lazy" decoding="async">
+    <figcaption><strong>海怎么走进我们的日常？</strong>
+      <p>渔船把鱼带回港口，货船沿航线运东西。</p>
+      <p class="ocean-water-path" aria-label="海水蒸发，水汽被风带上岸，可能形成降雨">
+        <span>海水蒸发</span><span aria-hidden="true">→</span><span>水汽上岸</span><span aria-hidden="true">→</span><span>可能成雨</span>
+      </p>
+      <small>阿拉斯加港湾 · NOAA Fisheries / Kalei Shotwell</small>
+    </figcaption>
+  </figure>`;
+}
+
 export function renderInquiry({ entry, textbook, data, activityMarkup, footer, note, viewId }) {
   const view = inquiryViews[viewId];
+  const visualReading = data.visualReading;
   const photo = evidencePhotos[entry.id];
   const illustration = photo ? photoFigure(photo) : '';
-  const recall = pointOfRecall(data.recall);
+  const recall = visualReading ? '' : pointOfRecall(data.recall);
   const evidence = `<section class="inquiry-evidence" data-inquiry-section="evidence" aria-labelledby="evidence-title">
       <header class="inquiry-section-head"><h2 id="evidence-title">${view.look}</h2></header>
       ${activityMarkup}
-      ${viewId === 'fieldwork' ? `<p class="inquiry-first-observation">${escapeHtml(data.compare)}</p>` : ''}
+      ${viewId === 'fieldwork' && !visualReading ? `<p class="inquiry-first-observation">${escapeHtml(data.compare)}</p>` : ''}
     </section>`;
-  const compare = viewId === 'fieldwork' ? '' : `<section class="inquiry-transfer" data-inquiry-section="transfer">
+  const compare = viewId === 'fieldwork' || visualReading ? '' : `<section class="inquiry-transfer" data-inquiry-section="transfer">
     <h2>${view.compare}</h2><p>${escapeHtml(data.compare)}</p></section>`;
   return `<article class="course-lesson inquiry-lesson" data-inquiry-lesson="${escapeHtml(entry.id)}">
     <header class="inquiry-intro" data-inquiry-section="opening">
@@ -106,7 +121,7 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, footer, n
     ${evidence}
     ${viewId === 'nearby' && photo ? illustration : ''}
     ${viewId !== 'recall' ? recall : ''}
-    ${evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
+    ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
     ${compare}
     ${note}
     <section class="inquiry-outside" data-inquiry-section="outside">

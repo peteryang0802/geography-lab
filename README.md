@@ -31,3 +31,4 @@
 - 地球照片 [NASA Apollo 17](https://science.nasa.gov/earth/earth-observatory/history-of-the-blue-marble/)，积雨云 [NASA ISS060-E-71360](https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?frame=71360&mission=ISS060&roll=E)，菊石 [Annie Scott / USGS](https://www.usgs.gov/media/images/fossil-ammonite)。
 - 地球轮廓与地形图层采用 Natural Earth [陆地轮廓](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) 与 [Gray Earth](https://www.naturalearthdata.com/downloads/50m-gray-earth/gray-earth-with-ocean-bottom/) 的缩小和着色版本。Three.js 及控件按 [MIT 许可](vendor/three/LICENSE) 随站提供。
 - 山地实景的署名见各相册。洋流和季风路径依据及教学示意的限度见 `src/flow-model.js`。
+- 《海洋和陆地的分布》的港湾照片为 [Kalei Shotwell / NOAA Fisheries](https://www.fisheries.noaa.gov/feature-story/celebrate-national-seafood-month)；喜马拉雅的实拍另见 [NASA Earth Observatory](https://science.nasa.gov/earth/earth-observatory/himalayas-near-and-far-147980/)。

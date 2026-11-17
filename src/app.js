@@ -5,9 +5,9 @@ import { mountPhotoGallery } from './photo-gallery.js?v=3';
 import { mountMapDirection } from './map-direction.js?v=2';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { createLearningStore } from './learning-state.js?v=3';
-import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js';
-import { inquiries } from './inquiries.js';
-import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js';
+import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=4';
+import { inquiries } from './inquiries.js?v=4';
+import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=4';
 import { fitActivityStage } from './activity-stage.js';
 
 const main = document.querySelector('#content');
@@ -172,8 +172,22 @@ function activityMarkup(lesson, activities) {
       ? '<section class="inline-mountain" data-inline-mountain hidden aria-label="山地照片"><h3 tabindex="-1" data-mountain-heading></h3><div class="photo-gallery" data-inline-photos></div></section>'
       : '';
     if (index === 0) return host + gallery;
-    return `<section class="inquiry-extra-activity" data-inquiry-section="activity-${activity.kind}"><h3>${escape(activity.title)}</h3>${host}${gallery}</section>`;
+    if (activity.collapsible) return `<details class="inquiry-extra-activity inquiry-optional-experiment"
+      data-inquiry-section="activity-${activity.kind}" data-remember="${id}">
+      <summary>${escape(activity.title)}</summary>${host}${gallery}</details>`;
+    const photo = activity.photo ? activityPhoto(topicViews[activity.photo.topic].photos[activity.photo.index]) : '';
+    return `<section class="inquiry-extra-activity" data-inquiry-section="activity-${activity.kind}">
+      <h3>${escape(activity.title)}</h3>${photo ? `<div class="inquiry-picture-pair">${host}${photo}</div>` : host}${gallery}</section>`;
   }).join('');
+}
+
+function activityPhoto(photo) {
+  return `<figure class="inquiry-picture-note">
+    <img src="./assets/gallery/${escape(photo.mobileFile || photo.file)}" alt="${escape(photo.alt)}"
+      width="${photo.width}" height="${photo.height}" loading="lazy" decoding="async">
+    <figcaption>沿着白色山峰看一眼。山脉背后，哪一片更平缓？
+      <small>国际空间站实拍 · NASA / ISS031-E-67020</small></figcaption>
+  </figure>`;
 }
 
 function lessonNote(lesson, data) {
@@ -198,12 +212,30 @@ function showLesson(lesson, storedView) {
   const note = main.querySelector('#project-note');
   note?.addEventListener('input', () => learning.setRecord('notes', lesson.id, note.value));
 
-  const session = { active: true, disposers: [] };
+  const session = { active: true, restore: true, disposers: [] };
+  const stopRestoring = () => { session.restore = false; };
+  const inputEvents = ['pointerdown', 'wheel', 'keydown'];
+  for (const event of inputEvents) window.addEventListener(event, stopRestoring, { once: true, passive: true });
+  session.disposers.push(() => {
+    for (const event of inputEvents) window.removeEventListener(event, stopRestoring);
+  });
   activities.forEach((activity, index) => {
     const key = activityKey(lesson.id, activity);
     const host = main.querySelector('[data-activity="' + key + '"]');
     const mount = () => mountInquiryActivity(host, lesson, activity, key, session, storedView);
-    if (index === 0 || storedView?.mountain && activity.kind === 'lab' || !('IntersectionObserver' in window)) mount();
+    const panel = host.closest('[data-inquiry-section]');
+    if (activity.collapsible) {
+      panel.open = storedView?.details?.[key] ?? Boolean(storedView?.mountain);
+      if (panel.open) mount();
+      else {
+        const start = () => {
+          if (!panel.open) return;
+          panel.removeEventListener('toggle', start);
+          mount();
+        };
+        panel.addEventListener('toggle', start);
+      }
+    } else if (index === 0 || storedView?.section === panel?.dataset.inquirySection || !('IntersectionObserver' in window)) mount();
     else {
       const observer = new IntersectionObserver(entries => {
         if (entries.some(entry => entry.isIntersecting)) {
@@ -268,14 +300,15 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
         session.disposers.push(() => mountain.dispose());
       }
       session.disposers.push(runner);
-      if (storedView?.section) restoreInquiryPosition(storedView);
+      if (storedView?.section && session.restore) restoreInquiryPosition(storedView);
       else if (activity === lessonActivities[lesson.id][0]) fitActivityStage(host);
     } else {
-      const saved = state.activities[key] ?? (!['legend', 'rain', 'world'].includes(activity.kind) ? state.widgets[lesson.id] : undefined);
+      const legacyWidget = ['chart', 'direction', 'evidence', 'opening'].includes(activity.kind) ? state.widgets[lesson.id] : undefined;
+      const saved = state.activities[key] ?? legacyWidget;
       const dispose = await mountLessonVisual(host, activity, lesson.id, saved,
         settings => learning.setRecord('activities', key, settings), viewId, isActive);
       if (typeof dispose === 'function') session.disposers.push(dispose);
-      if (isActive() && storedView?.section) restoreInquiryPosition(storedView);
+      if (isActive() && storedView?.section && session.restore) restoreInquiryPosition(storedView);
     }
   } catch (error) {
     if (!isActive()) return;

@@ -12,7 +12,12 @@ export const lessonActivities = {
   maps: [visual('legend'), { kind: 'direction', title: '换张地图，方向还一样吗？' }],
   contours: [visual('rain'), { ...lab('contour'), title: '沿另一条山路看看高低' }],
   'project-orienteering': [visual('evidence')],
-  'land-ocean': [visual('world'), { ...lab('globe', 'terrain'), title: '从地球仪上找山脉' }],
+  'land-ocean': [
+    visual('world'),
+    { kind: 'landform', title: '山脉和高原怎么区分？', photo: { topic: 'himalayas', index: 2 } },
+    { kind: 'seafloor', title: '从海岸潜下去，海底怎么变？' },
+    { ...lab('globe', 'terrain'), title: '转转地球仪，找别处的山脉', collapsible: true },
+  ],
   'land-change': [visual('evidence')],
   'project-seafloor': [visual('evidence')],
   weather: [chart('weather')],
@@ -40,7 +45,15 @@ const visualLoaders = {
     const { mountRainInquiry } = await import('./inquiry-visuals.js');
     return (host, _, saved, onChange, view) => mountRainInquiry(host, saved, onChange, { view: ({ recall: 'a', nearby: 'b', fieldwork: 'c' })[view] });
   },
-  world: async () => (await import('./world-inquiry.js')).mountWorldInquiry,
+  world: async () => (await import('./world-inquiry.js?v=4')).mountWorldInquiry,
+  landform: async () => {
+    const { mountLandformInquiry } = await import('./landform-inquiry.js');
+    return (host, _, saved, onChange) => mountLandformInquiry(host, saved, onChange);
+  },
+  seafloor: async () => {
+    const { mountSeafloorInquiry } = await import('./seafloor-inquiry.js');
+    return (host, _, saved, onChange) => mountSeafloorInquiry(host, saved, onChange);
+  },
   direction: async () => {
     const { mountMapDirection } = await import('./map-direction.js?v=2');
     return (host, _, saved, onChange) => mountMapDirection(host, saved, onChange);
