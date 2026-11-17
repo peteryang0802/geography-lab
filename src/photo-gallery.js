@@ -1,3 +1,7 @@
+import { galleryPhoto, photoSourceUrl } from './responsive-photo.js?v=5';
+
+const PHOTO_TIMEOUT_MS = 8000;
+
 function link(text, href) {
   const anchor = document.createElement('a');
   anchor.href = href;
@@ -6,8 +10,6 @@ function link(text, href) {
   anchor.rel = 'noopener';
   return anchor;
 }
-
-const imageUrl = filename => new URL('../assets/gallery/' + filename, import.meta.url).href;
 
 export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedded = false, heading = '滑着看图片' } = {}) {
   if (photos.length === 0) return () => {};
@@ -70,16 +72,19 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     credit.append(link(photo.title, photo.source), ' · ' + photo.author + ' · ', link(...photo.license), ' · 图片已缩放或转换格式');
     sources.append(credit);
     track.append(figure);
-    const slide = { photo, figure, image, caption, status, message, retry };
+    const slide = { photo, figure, image, caption, status, message, retry, failedAttempts: 0, request: 0 };
     setImageState(slide, 'idle');
     image.addEventListener('load', async () => {
+      const request = slide.request;
       const source = image.currentSrc;
       try {
         await image.decode();
       } catch {
         // Another candidate may have been selected while an image was decoding.
       }
-      if (!disposed && source === image.currentSrc && image.complete && image.naturalWidth) finishPhoto(slide, photoIndex, 'loaded');
+      if (request === slide.request && source === image.currentSrc && image.complete && image.naturalWidth) {
+        finishPhoto(slide, photoIndex, 'loaded');
+      }
     });
     image.addEventListener('error', () => finishPhoto(slide, photoIndex, 'error'));
     retry.addEventListener('click', () => requestPhoto(photoIndex, 'high', true));
@@ -95,7 +100,7 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     slide.caption.style.visibility = loaded ? '' : 'hidden';
     slide.status.hidden = loaded;
     slide.retry.hidden = !error;
-    slide.message.textContent = loaded ? '' : error ? '这张照片没载入。' : '照片加载中…';
+    slide.message.textContent = loaded ? '' : error ? '这张照片暂时没载入。' : '照片加载中…';
   }
 
   function resolveSizes(slide) {
@@ -113,22 +118,34 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     if (slide.state === 'loading') return;
     if (retry && document.activeElement === slide.retry) track.focus({ preventScroll: true });
     setImageState(slide, 'loading');
+    const request = ++slide.request;
+    const useThumbnail = retry && (slide.timedOut || slide.failedAttempts >= 2);
+    slide.timedOut = false;
+    slide.timeout = setTimeout(() => {
+      if (request !== slide.request || slide.state !== 'loading') return;
+      slide.timedOut = true;
+      finishPhoto(slide, target, 'error');
+      image.removeAttribute('srcset');
+      image.removeAttribute('src');
+    }, PHOTO_TIMEOUT_MS);
     const suffix = retry ? '?retry=' + Date.now() : '';
-    const original = imageUrl(photo.file) + suffix;
-    if (photo.mobileFile && matchMedia('(pointer: coarse) and (max-width: 920px)').matches) {
-      image.src = imageUrl(photo.mobileFile) + suffix;
+    const imageUrl = file => photoSourceUrl(file) + suffix;
+    const descriptor = galleryPhoto(photo, { thumbnail: useThumbnail });
+    if (useThumbnail || !descriptor.variants || matchMedia('(pointer: coarse) and (max-width: 920px)').matches) {
+      image.removeAttribute('srcset');
+      image.src = imageUrl(descriptor.file);
       return;
     }
-    if (photo.mobileFile && photo.width > 640) {
-      resolveSizes(slide);
-      image.srcset = `${imageUrl(photo.mobileFile) + suffix} 640w, ${original} ${photo.width}w`;
-    }
-    image.src = original;
+    resolveSizes(slide);
+    image.srcset = descriptor.variants.map(([file, width]) => `${imageUrl(file)} ${width}w`).join(', ');
+    image.src = imageUrl(descriptor.file);
   }
 
   function finishPhoto(slide, photoIndex, state) {
-    if (disposed) return;
+    if (disposed || slide.state !== 'loading') return;
+    clearTimeout(slide.timeout);
     if (backgroundIndex === photoIndex) backgroundIndex = null;
+    if (state === 'error') slide.failedAttempts++;
     setImageState(slide, state);
     updateCaption();
     schedulePrefetch();
@@ -141,7 +158,10 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
 
   function schedulePrefetch() {
     clearTimeout(prefetchTimer);
-    if (requestedIndex !== null || backgroundIndex !== null || navigator.connection?.saveData || slides[index].state !== 'loaded') return;
+    const connection = navigator.connection;
+    const constrained = connection?.saveData || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType)
+      || !connection?.effectiveType && matchMedia('(pointer: coarse)').matches;
+    if (requestedIndex !== null || backgroundIndex !== null || document.hidden || constrained || slides[index].state !== 'loaded') return;
     const neighbor = bound(index + direction) === index ? index - direction : index + direction;
     if (slides[neighbor]?.state !== 'idle') return;
     prefetchTimer = setTimeout(() => {
@@ -222,5 +242,6 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
     observer.disconnect();
     cancelAnimationFrame(frame);
     clearTimeout(prefetchTimer);
+    for (const slide of slides) clearTimeout(slide.timeout);
   };
 }

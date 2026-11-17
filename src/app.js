@@ -1,16 +1,18 @@
 import { lessons, projects, legendItems, concepts, getRelations, labs, bookPageUrl } from './catalog.js';
 import { FLOW_SOURCES } from './flow-model.js';
-import { topicViews } from './topic-views.js';
-import { mountPhotoGallery } from './photo-gallery.js?v=3';
+import { topicViews } from './topic-views.js?v=5';
+import { mountPhotoGallery } from './photo-gallery.js?v=5';
 import { mountMapDirection } from './map-direction.js?v=2';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { createLearningStore } from './learning-state.js?v=3';
-import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=4';
-import { inquiries } from './inquiries.js?v=4';
-import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=4';
+import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=5';
+import { inquiries } from './inquiries.js?v=5';
+import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=5';
 import { fitActivityStage } from './activity-stage.js';
+import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=5';
 
 const main = document.querySelector('#content');
+mountDeferredPhotos(main);
 const viewId = selectInquiryView(location.search);
 const inquiryView = inquiryViews[viewId];
 document.documentElement.dataset.inquiryView = viewId;
@@ -64,8 +66,8 @@ function home() {
     : viewId === 'nearby' ? '从一个现象开始' : (recent ? '继续调查' : '打开第一份调查');
   const usesRainPhoto = viewId !== 'recall' && entry.id === 'contours';
   const homePhoto = usesRainPhoto
-    ? '<img src="./assets/evidence/puddle.webp" alt="雨后路面上的积水" fetchpriority="high"><figcaption>雨后路面实景 · Paul The Writer / CC0</figcaption>'
-    : '<picture><source media="(min-width: 900px)" srcset="./assets/landscape.webp"><img src="./assets/landscape-small.webp" alt="高低起伏的山脊之间，一条河穿过塔拉河峡谷" fetchpriority="high"></picture><figcaption>塔拉河峡谷 · Alexkom000 / CC BY 4.0</figcaption>';
+    ? responsivePhoto(evidencePhoto('puddle'), { alt: '雨后路面上的积水', loading: 'eager', sizes: '(max-width: 700px) 92vw, 480px' }) + '<figcaption>雨后路面实景 · Paul The Writer / CC0</figcaption>'
+    : responsivePhoto(landscapePhoto, { alt: '高低起伏的山脊之间，一条河穿过塔拉河峡谷', loading: 'eager', sizes: '(max-width: 700px) 92vw, 480px' }) + '<figcaption>塔拉河峡谷 · Alexkom000 / CC BY 4.0</figcaption>';
   return `
     <section class="inquiry-home" aria-labelledby="hero-title">
       <div class="inquiry-home-copy">
@@ -171,6 +173,8 @@ function activityMarkup(lesson, activities) {
     const gallery = activity.kind === 'lab' && activity.id === 'globe'
       ? '<section class="inline-mountain" data-inline-mountain hidden aria-label="山地照片"><h3 tabindex="-1" data-mountain-heading></h3><div class="photo-gallery" data-inline-photos></div></section>'
       : '';
+    if (activity.placement === 'outside') return `<section class="inquiry-outside" data-inquiry-section="outside">
+      <h2>${escape(activity.title)}</h2>${host}</section>`;
     if (index === 0) return host + gallery;
     if (activity.collapsible) return `<details class="inquiry-extra-activity inquiry-optional-experiment"
       data-inquiry-section="activity-${activity.kind}" data-remember="${id}">
@@ -183,8 +187,7 @@ function activityMarkup(lesson, activities) {
 
 function activityPhoto(photo) {
   return `<figure class="inquiry-picture-note">
-    <img src="./assets/gallery/${escape(photo.mobileFile || photo.file)}" alt="${escape(photo.alt)}"
-      width="${photo.width}" height="${photo.height}" loading="lazy" decoding="async">
+    ${responsivePhoto(galleryPhoto(photo), { alt: photo.alt, sizes: '(max-height: 500px) and (orientation: landscape) 39vw, (max-width: 700px) 92vw, 350px' })}
     <figcaption>沿着白色山峰看一眼。山脉背后，哪一片更平缓？
       <small>国际空间站实拍 · NASA / ISS031-E-67020</small></figcaption>
   </figure>`;
@@ -205,7 +208,8 @@ function showLesson(lesson, storedView) {
   const activities = lessonActivities[lesson.id];
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
-    activityMarkup: activityMarkup(lesson, activities),
+    activityMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement !== 'outside')),
+    outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
     footer: lessonNavigation(position), note: lessonNote(lesson, data),
   });
   learning.recordVisit(lesson.id);
@@ -225,7 +229,7 @@ function showLesson(lesson, storedView) {
     const mount = () => mountInquiryActivity(host, lesson, activity, key, session, storedView);
     const panel = host.closest('[data-inquiry-section]');
     if (activity.collapsible) {
-      panel.open = storedView?.details?.[key] ?? Boolean(storedView?.mountain);
+      panel.open = storedView?.details?.[key] ?? (activity.kind === 'lab' && Boolean(storedView?.mountain));
       if (panel.open) mount();
       else {
         const start = () => {
@@ -320,7 +324,7 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
 
 async function mountLearningLab(host, lab, params, saved, key, options, isActive) {
   const route = activeHash;
-  const { mountLabUI } = await import('./lab-ui.js?v=3');
+  const { mountLabUI } = await import('./lab-ui.js?v=5');
   if (!isActive()) return;
   let mounted = false;
   const dispose = mountLabUI(host, lab, params, saved, settings => {
@@ -514,7 +518,7 @@ function explore() {
     result.innerHTML = hits.map(item => {
       const photo = topicViews[item.id]?.photos?.[0];
       return `<a class="card ${photo ? 'topic-card' : ''}" href="${item.href}">
-        ${photo ? `<img src="./assets/gallery/${escape(photo.file)}" alt="" loading="lazy" decoding="async">` : ''}
+        ${photo ? responsivePhoto(galleryPhoto(photo, { thumbnail: true }), { alt: '' }) : ''}
         <h3>${escape(item.title)}</h3>
         <p>${escape(featured && photo ? photo.cue : item.text)}</p>
         <span class="card-action">${escape(featured ? '看照片' : item.titleOfLesson)} ${arrow}</span></a>`;

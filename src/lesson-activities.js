@@ -1,3 +1,5 @@
+import { inquiries } from './inquiries.js?v=5';
+
 const visual = kind => ({ kind });
 const lab = (id, mode) => ({ kind: 'lab', id, mode });
 const chart = id => ({ kind: 'chart', id });
@@ -17,6 +19,7 @@ export const lessonActivities = {
     { kind: 'landform', title: '山脉和高原怎么区分？', photo: { topic: 'himalayas', index: 2 } },
     { kind: 'seafloor', title: '从海岸潜下去，海底怎么变？' },
     { ...lab('globe', 'terrain'), title: '转转地球仪，找别处的山脉', collapsible: true },
+    { kind: 'world-check', title: '换张地图试一试', placement: 'outside' },
   ],
   'land-change': [visual('evidence')],
   'project-seafloor': [visual('evidence')],
@@ -45,7 +48,11 @@ const visualLoaders = {
     const { mountRainInquiry } = await import('./inquiry-visuals.js');
     return (host, _, saved, onChange, view) => mountRainInquiry(host, saved, onChange, { view: ({ recall: 'a', nearby: 'b', fieldwork: 'c' })[view] });
   },
-  world: async () => (await import('./world-inquiry.js?v=4')).mountWorldInquiry,
+  world: async () => (await import('./world-inquiry.js?v=5')).mountWorldInquiry,
+  'world-check': async () => {
+    const { mountWorldCheck } = await import('./world-inquiry.js?v=5');
+    return (host, lessonId, saved, onChange) => mountWorldCheck(host, inquiries[lessonId].outside, saved, onChange);
+  },
   landform: async () => {
     const { mountLandformInquiry } = await import('./landform-inquiry.js');
     return (host, _, saved, onChange) => mountLandformInquiry(host, saved, onChange);

@@ -123,8 +123,7 @@ export const inquiries = {
     guess: '在图上找两岸，再猜中间是哪片海。',
     visualReading: true,
     compare: '我在图上找到了哪两岸？中间隔着哪片洋？',
-    closing: '先找两岸，再认中间的洋。',
-    outside: '换张世界地图，从非洲东岸往东到澳大利亚，你会跨过哪个大洋？',
+    outside: '从非洲东岸向东，到澳大利亚会跨过哪片大洋？',
   },
   'land-change': {
     question: '如果在高山的岩层里看到海洋生物化石，这片岩石以前可能在哪儿？',

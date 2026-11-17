@@ -10,7 +10,7 @@ import {
   sunlightAt,
 } from './geo-model.js';
 import { getFlowPaths } from './flow-model.js';
-import { loadReliefImage } from './relief-image.js';
+import { loadReliefImage } from './relief-image.js?v=5';
 
 const INK = '#173a3d';
 const MUTED = '#476267';
@@ -460,7 +460,7 @@ export function mountFlat(host, kind, config = {}) {
     const y = event.clientY - canvasBounds.top;
     if (active.mode === 'terrain') {
       let selected;
-      let minimumDistance = 15;
+      let minimumDistance = 22;
       for (const [id, site] of Object.entries(TERRAIN_SITES)) {
         const distance = Math.hypot(x - lonX(bounds, site.lon), y - latY(bounds, site.lat));
         if (distance < minimumDistance) {

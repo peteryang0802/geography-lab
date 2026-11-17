@@ -1,16 +1,46 @@
 import { contourProfile, sunlightAt, TERRAIN_SITES, TO_RADIANS } from './geo-model.js';
-import { mountFlat } from './flat.js?v=3';
+import { mountFlat } from './flat.js?v=5';
 import { fitActivityStage } from './activity-stage.js';
 import { FLOW_NOTES, getFlowPaths } from './flow-model.js';
+
+const THREE_LOAD_TIMEOUT = 7000;
+const threeRuntimeUrl = new URL('./three-runtime.js?v=1', import.meta.url);
+let threeRuntime;
+let pendingRuntime;
+let retryRuntime = false;
+
+function resetRuntimeRequest(request) {
+  if (pendingRuntime !== request) return;
+  pendingRuntime = undefined;
+  retryRuntime = true;
+}
+
+function loadThreeRuntime() {
+  if (threeRuntime) return Promise.resolve(threeRuntime);
+  if (!pendingRuntime) {
+    const url = new URL(threeRuntimeUrl);
+    if (retryRuntime) url.searchParams.set('retry', Date.now());
+    const request = import(url.href).then(runtime => {
+      if (pendingRuntime === request) pendingRuntime = undefined;
+      threeRuntime = runtime;
+      return runtime;
+    }, error => {
+      resetRuntimeRequest(request);
+      throw error;
+    });
+    pendingRuntime = request;
+  }
+  return pendingRuntime;
+}
 
 const defaultsByLab = {
   globe: {
     mode: 'coordinates', lat: 40, lon: 116, pointLat: 40, pointLon: 116,
     hour: 4, month: 6, viewYaw: 0, terrainFocus: 'himalayas', flow: 'currents',
-    season: 'summer', currentId: 'kuroshio', flat: false,
+    season: 'summer', currentId: 'kuroshio',
   },
-  contour: { section: 'ab', walkStep: 0, flat: true, exerciseVersion: 2 },
-  terrain: { siteA: 'himalayas', siteB: 'alps', flat: false },
+  contour: { section: 'ab', walkStep: 0, exerciseVersion: 2 },
+  terrain: { siteA: 'himalayas', siteB: 'alps' },
 };
 const globeModes = ['coordinates', 'daylight', 'terrain', 'circulation'];
 const siteIds = Object.keys(TERRAIN_SITES);
@@ -41,7 +71,7 @@ function clipSettings(kind, saved, params) {
   const state = {
     ...initial,
     entryKey,
-    flat: (saved?.flat ?? initial.flat) === true || navigator.connection?.saveData === true,
+    preferThree: saved?.preferThree === true,
     evidenceOpen: saved?.evidenceOpen === true,
   };
   const cameraPose = saved?.cameraPose;
@@ -75,7 +105,7 @@ function clipSettings(kind, saved, params) {
   if (kind === 'contour') {
     if (saved?.section === 'cd') state.section = 'cd';
     state.walkStep = Math.round(numeric(saved?.walkStep, initial.walkStep, 0, 12));
-    if (saved?.exerciseVersion !== initial.exerciseVersion) state.flat = true;
+    if (saved?.exerciseVersion !== initial.exerciseVersion) state.preferThree = false;
   }
   if (kind === 'terrain') {
     state.siteA = isNewEntry && siteIds.includes(params.get('site')) ? params.get('site') : siteIds.includes(saved?.siteA) ? saved.siteA : initial.siteA;
@@ -120,7 +150,7 @@ const controls = (kind, settings, inline) => {
       <button type="button" class="chip" data-day-pair aria-pressed="false">比南北昼长</button>
     </div>
     <div class="control-pair" data-globe-terrain hidden>
-      <div class="control-group"><label for="terrain-focus">找一处山地</label><select id="terrain-focus" data-terrain-focus>${sites.map(([id, site]) => `<option value="${id}">${site.name}</option>`).join('')}</select></div>
+      <div class="control-group"><label for="terrain-focus">点图上圆点，或选山地</label><select id="terrain-focus" data-terrain-focus>${sites.map(([id, site]) => `<option value="${id}">${site.name}</option>`).join('')}</select></div>
       <div class="dock-link">${inline ? '<button type="button" class="button" data-terrain-knowledge>看这座山的照片</button>' : '<a class="button" data-terrain-knowledge>山地照片 →</a>'}</div>
     </div>
     <div data-globe-flows hidden>
@@ -188,13 +218,14 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   if (inline) host.dataset.labInline = '';
   let disposed = false;
   let loadVersion = 0;
+  let loadTimer;
   let activeMode = 'flat';
   let three;
   let flat;
   let touchEnabled = !matchMedia('(pointer: coarse)').matches;
 
   host.innerHTML = `
-    <div class="lesson-shell lab-layout">
+    <div class="lesson-shell lab-layout" data-lab-kind="${kind}">
       <div class="lab-stage">
         <div class="stage-head">
           ${kind === 'globe' ? `<div role="group" aria-label="地球仪图层" class="mode-strip">
@@ -207,13 +238,15 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
             <span class="stage-state" role="status" data-stage-state>平面视图</span>
             <div class="mini-actions" aria-label="场景操作">
               <button class="button" type="button" data-rotate hidden>旋转场景</button>
-              ${kind === 'globe' ? '<button class="button turn-button" type="button" data-turn aria-label="向东转动视角">转向</button>' : ''}
+              ${kind === 'globe' ? '<button class="button turn-button" type="button" data-turn aria-label="向东转动视角 45 度">东转 45°</button>' : ''}
               <button class="button" type="button" data-toggle-view>开启 3D</button>
             </div>
           </div>
         </div>
-          <div class="scene-host" hidden></div>
-          <div class="flat-host"></div>
+          <div class="lab-view" style="position:relative">
+            <div class="scene-host" hidden></div>
+            <div class="flat-host"></div>
+          </div>
           <div class="lab-live"><p data-live></p><div data-flow-legend class="flow-legend" hidden></div></div>
       </div>
       <section class="lab-dock" aria-label="实验控制">
@@ -372,7 +405,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       ...settings,
       interactive: touchEnabled,
       onContextLost: () => {
-        if (!disposed) useFlat('3D 已中断，已恢复为平面视图。');
+        if (!disposed) failThree('3D 已中断，可以继续用平面图。');
       },
       onCoordinatePick: ({ lat, lon }) => changePoint(Math.round(lat), Math.round(lon)),
       onCameraChange: saveCamera,
@@ -382,55 +415,88 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     };
   }
 
-  function useFlat(message = '平面视图') {
+  function setMode(mode) {
+    activeMode = mode;
+    host.dataset.threeState = mode;
+  }
+
+  function rememberThree(preferThree) {
+    if (settings.preferThree === preferThree) return;
+    settings = { ...settings, preferThree };
+    onChange(settings);
+  }
+
+  function useFlat(message, failed = false) {
     loadVersion += 1;
-    saveCamera(three?.captureCamera());
+    clearTimeout(loadTimer);
+    if (activeMode === 'three') saveCamera(three?.captureCamera());
     three?.dispose();
     three = null;
-    activeMode = 'flat';
+    setMode(failed ? 'failed' : 'flat');
     sceneHost.hidden = true;
+    sceneHost.removeAttribute('style');
     flatHost.hidden = false;
     flat ||= mountFlat(flatHost, kind, sceneConfig());
     flat.update(sceneConfig());
-    switcher.textContent = kind === 'contour' ? '看 3D 山坡' : '开启 3D';
+    switcher.textContent = failed ? '重试 3D' : kind === 'contour' ? '看 3D 山坡' : '开启 3D';
     rotation.hidden = true;
     if (turn) turn.hidden = true;
-    stage.textContent = kind === 'contour' && message === '平面视图' ? '从上看 · 从侧面看' : message;
+    stage.textContent = message ?? (kind === 'contour' ? '从上看 · 从侧面看' : '平面视图');
     syncControls();
+  }
+
+  function failThree(message) {
+    rememberThree(false);
+    useFlat(message, true);
   }
 
   async function useThree(focusControls = true) {
     const version = ++loadVersion;
-    stage.textContent = '正在加载 3D，可先操作平面视图。';
-    switcher.textContent = '继续用平面';
-    activeMode = 'loading';
-    const timer = setTimeout(() => {
-      if (!disposed && version === loadVersion) useFlat('3D 加载较慢，正在使用平面视图。');
-    }, 7500);
+    const isCurrent = () => !disposed && version === loadVersion;
+    stage.textContent = '正在打开 3D，平面图可以继续用。';
+    switcher.textContent = '取消 3D';
+    setMode('loading');
+    const request = loadThreeRuntime();
+    loadTimer = setTimeout(() => {
+      if (!isCurrent()) return;
+      if (!threeRuntime) resetRuntimeRequest(request);
+      failThree('3D 打开超时，平面图可以继续用。');
+    }, THREE_LOAD_TIMEOUT);
     try {
-      const { mountScene } = await import('./scenes.js?v=2');
-      if (disposed || version !== loadVersion) return;
+      const { mountScene } = await request;
+      if (!isCurrent()) return;
+      // Give the canvas a size while the interactive flat view stays visible.
+      Object.assign(sceneHost.style, { position: 'absolute', inset: '0 auto auto 0', visibility: 'hidden' });
       sceneHost.hidden = false;
-      three = mountScene(sceneHost, kind, sceneConfig());
-      if (!three) throw new Error('3D graphics unavailable');
-      flat?.dispose();
-      flat = null;
-      flatHost.hidden = true;
-      activeMode = 'three';
-      stage.textContent = 'Three.js 三维视图';
-      switcher.textContent = kind === 'contour' ? '看侧面' : '切换平面';
-      rotation.hidden = !rotatable;
-      if (turn) turn.hidden = false;
-      syncControls();
-      if (focusControls) requestAnimationFrame(() => {
-        if (!disposed && activeMode === 'three') fitActivityStage(host);
+      three = mountScene(sceneHost, kind, sceneConfig(), {
+        onFirstFrame() {
+          if (!isCurrent()) return;
+          clearTimeout(loadTimer);
+          sceneHost.removeAttribute('style');
+          flat?.dispose();
+          flat = null;
+          flatHost.hidden = true;
+          setMode('three');
+          rememberThree(true);
+          stage.textContent = '三维视图';
+          switcher.textContent = kind === 'contour' ? '看侧面' : '切换平面';
+          rotation.hidden = !rotatable;
+          if (turn) turn.hidden = false;
+          rotation.setAttribute('aria-pressed', String(touchEnabled));
+          rotation.textContent = touchEnabled ? '恢复页面滑动' : kind === 'globe' ? '拖动地球' : '拖动模型';
+          syncControls();
+          const { top, bottom } = switcher.getBoundingClientRect();
+          if (focusControls && bottom > 0 && top < window.innerHeight) fitActivityStage(host);
+        },
+        onRenderError() {
+          if (isCurrent()) failThree('设备暂时打不开 3D，可以继续用平面图。');
+        },
       });
-      rotation.setAttribute('aria-pressed', String(touchEnabled));
-      rotation.textContent = touchEnabled ? '恢复页面滑动' : '旋转场景';
     } catch {
-      if (!disposed && version === loadVersion) useFlat('此设备暂时无法显示 3D，平面任务可以继续。');
-    } finally {
-      clearTimeout(timer);
+      if (!isCurrent()) return;
+      failThree(threeRuntime
+        ? '设备暂时打不开 3D，可以继续用平面图。'
+        : '3D 没下载完成，可以继续用平面图。');
     }
   }
 
@@ -488,14 +554,14 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   host.querySelector('[data-swap]')?.addEventListener('click', () => change({ siteA: settings.siteB, siteB: settings.siteA }));
   for (const button of answerButtons) button.addEventListener('click', () => change({ answer: Number(button.dataset.labAnswer) }));
   switcher.addEventListener('click', () => {
-    const flat = activeMode !== 'flat';
-    change({ flat });
-    if (flat) useFlat();
-    else useThree();
+    if (activeMode === 'loading' || activeMode === 'three') {
+      rememberThree(false);
+      useFlat();
+    } else useThree();
   });
   rotation.addEventListener('click', () => {
     touchEnabled = !touchEnabled;
-    rotation.textContent = touchEnabled ? '恢复页面滑动' : '旋转场景';
+    rotation.textContent = touchEnabled ? '恢复页面滑动' : kind === 'globe' ? '拖动地球' : '拖动模型';
     rotation.setAttribute('aria-pressed', String(touchEnabled));
     three?.update(sceneConfig());
   });
@@ -506,11 +572,17 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   syncControls();
   onChange(settings);
   useFlat();
-  if (!settings.flat) useThree(!inline);
+  if (settings.preferThree && navigator.connection?.saveData !== true) {
+    // Let the flat canvas paint before restoring a previously working 3D view.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!disposed && activeMode === 'flat' && settings.preferThree) useThree(false);
+    }));
+  }
 
   return () => {
     disposed = true;
     loadVersion += 1;
+    clearTimeout(loadTimer);
     three?.dispose();
     flat?.dispose();
   };

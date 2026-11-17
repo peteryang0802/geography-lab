@@ -8,9 +8,23 @@
   <meta name="robots" content="noindex">
   <title>地理实验台 · 七年级上册</title>
   <link rel="icon" type="image/png" href="./assets/compass.png">
-  <link rel="stylesheet" href="./assets/styles.css?v=4">
-  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
-  <script type="module" src="./src/app.js?v=4"></script>
+  <script>
+    const isHome = !location.hash.startsWith('#/') || location.hash === '#/';
+    const view = new URLSearchParams(location.search).get('view');
+    if (isHome && view !== 'nearby' && view !== 'fieldwork') {
+      const cover = document.createElement('link');
+      if ('imageSrcset' in cover) {
+        cover.rel = 'preload';
+        cover.as = 'image';
+        cover.imageSrcset = './assets/landscape-420.webp 420w, ./assets/landscape-small.webp 640w';
+        cover.imageSizes = '(max-width: 700px) 92vw, 480px';
+        cover.fetchPriority = 'high';
+        document.head.append(cover);
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="./assets/styles.css?v=5">
+  <script type="module" src="./src/app.js?v=5"></script>
 </head>
 <body>
   <a class="skip" href="#content">跳到内容</a>

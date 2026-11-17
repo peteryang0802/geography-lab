@@ -1,3 +1,5 @@
+import { evidencePhoto, responsivePhoto } from './responsive-photo.js?v=5';
+
 export const inquiryViews = {
   recall: {
     name: '按课回顾',
@@ -63,7 +65,7 @@ const evidencePhotos = {
 
 function photoFigure(photo) {
   return `<figure class="inquiry-photo">
-    <img src="./assets/evidence/${photo.file}.webp" alt="${escapeHtml(photo.alt)}" loading="lazy" decoding="async">
+    ${responsivePhoto(evidencePhoto(photo.file), { alt: photo.alt, sizes: '(max-width: 700px) 90vw, 760px' })}
     <figcaption>${escapeHtml(photo.text)} <small>${escapeHtml(photo.credit)}</small></figcaption>
   </figure>`;
 }
@@ -85,8 +87,9 @@ function evidenceReading(entry, data, view, extra) {
 
 function oceanLifeFigure() {
   return `<figure class="inquiry-picture-note ocean-life" data-inquiry-section="ocean-life">
-    <img src="./assets/evidence/fishing-vessel.webp" width="640" height="427"
-      alt="傍晚的阿拉斯加港湾，渔船停在岸边" loading="lazy" decoding="async">
+    ${responsivePhoto(evidencePhoto('fishing-vessel'), {
+      alt: '傍晚的阿拉斯加港湾，渔船停在岸边', sizes: '(max-width: 700px) 90vw, 350px',
+    })}
     <figcaption><strong>海怎么走进我们的日常？</strong>
       <p>渔船把鱼带回港口，货船沿航线运东西。</p>
       <p class="ocean-water-path" aria-label="海水蒸发，水汽被风带上岸，可能形成降雨">
@@ -97,7 +100,7 @@ function oceanLifeFigure() {
   </figure>`;
 }
 
-export function renderInquiry({ entry, textbook, data, activityMarkup, footer, note, viewId }) {
+export function renderInquiry({ entry, textbook, data, activityMarkup, outsideMarkup, footer, note, viewId }) {
   const view = inquiryViews[viewId];
   const visualReading = data.visualReading;
   const photo = evidencePhotos[entry.id];
@@ -124,10 +127,10 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, footer, n
     ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
     ${compare}
     ${note}
-    <section class="inquiry-outside" data-inquiry-section="outside">
-      <h2>回到现实看一眼</h2><p>${escapeHtml(data.closing)}</p>
-      <p><strong>${escapeHtml(data.outside)}</strong></p>
-    </section>
+    ${outsideMarkup || `<section class="inquiry-outside" data-inquiry-section="outside">
+      <h2>课外观察</h2><p>${escapeHtml(data.closing)}</p>
+      <p>${escapeHtml(data.outside)}</p>
+    </section>`}
     ${footer}
   </article>`;
 }

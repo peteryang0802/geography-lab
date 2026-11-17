@@ -32,6 +32,7 @@ const routes = {
 
 const oceanColor = '#c5e4ef';
 const landColor = '#e7d5a7';
+const oceanChoices = ['太平洋', '印度洋', '大西洋'];
 
 function readSaved(saved) {
   if (Object.hasOwn(routes, saved?.route)) {
@@ -46,9 +47,9 @@ function readSaved(saved) {
   };
 }
 
-function paintWorld(context, width, height, center) {
-  const x = (longitude, offset = 0) => (longitude - center + 180 + offset) * width / 360;
-  const y = latitude => (90 - latitude) * height / 180;
+function paintWorld(context, width, height, center, span = 360, north = 90) {
+  const x = (longitude, offset = 0) => (longitude - center + span / 2 + offset) * width / span;
+  const y = latitude => (north - latitude) * height / (span / 2);
 
   context.fillStyle = oceanColor;
   context.fillRect(0, 0, width, height);
@@ -81,8 +82,8 @@ function paintWorld(context, width, height, center) {
   context.setLineDash([]);
 
   return (latitude, longitude) => {
-    const projection = x(longitude);
-    return [((projection % width) + width) % width, y(latitude)];
+    const nearest = (((longitude - center + 180) % 360 + 360) % 360) - 180 + center;
+    return [x(nearest), y(latitude)];
   };
 }
 
@@ -148,6 +149,17 @@ function flightPath(context, start, end) {
   return [middleX, (startY + endY) / 2 + 17];
 }
 
+function drawMap(canvas, context, paint) {
+  const width = canvas.clientWidth;
+  if (!context || width === 0) return;
+  const height = width / 2;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  paint(width, height);
+}
+
 export function mountWorldInquiry(host, _, saved, onChange) {
   const state = readSaved(saved);
   host.innerHTML = `<div class="inquiry-world-activity" data-world-activity>
@@ -182,14 +194,10 @@ export function mountWorldInquiry(host, _, saved, onChange) {
   const feedback = host.querySelector('[data-world-feedback]');
 
   function draw() {
-    const width = canvas.clientWidth;
-    if (!context || width === 0) return;
-    const height = width / 2;
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawMap(canvas, context, paint);
+  }
 
+  function paint(width, height) {
     const route = routes[state.route];
     const position = paintWorld(context, width, height, state.labels ? 0 : route.center);
 
@@ -248,6 +256,64 @@ export function mountWorldInquiry(host, _, saved, onChange) {
     change({ route: changeRoute.dataset.worldRoute, revealed: false });
     reveal.focus({ preventScroll: true });
   });
+  const observer = new ResizeObserver(draw);
+  observer.observe(canvas);
+  update();
+  return () => observer.disconnect();
+}
+
+export function mountWorldCheck(host, question, saved, onChange) {
+  let selected = oceanChoices.includes(saved?.selected) ? saved.selected : '';
+  host.innerHTML = `<div class="world-check" data-world-check>
+    <p id="world-check-question"></p>
+    <figure class="inquiry-world">
+      <canvas role="img" width="640" height="320" aria-label="区域地图，左边标出非洲东岸，右边标出澳大利亚西岸"></canvas>
+    </figure>
+    <div class="world-check-controls">
+      <div class="world-check-choices" role="group" aria-labelledby="world-check-question">
+        ${oceanChoices.map(ocean => `<button type="button" class="button" aria-pressed="false" data-world-choice="${ocean}">${ocean}</button>`).join('')}
+      </div>
+      <p class="world-check-feedback" role="status" data-world-check-feedback></p>
+    </div>
+  </div>`;
+
+  const canvas = host.querySelector('canvas');
+  const context = canvas.getContext('2d');
+  const choices = [...host.querySelectorAll('[data-world-choice]')];
+  const feedback = host.querySelector('[data-world-check-feedback]');
+  host.querySelector('#world-check-question').textContent = question;
+
+  function draw() {
+    drawMap(canvas, context, (width, height) => {
+      const position = paintWorld(context, width, height, 77, 164, 25);
+      const start = position(-17, 39);
+      const end = position(-22, 114);
+      if (selected === '印度洋') {
+        mapLabel(context, width, height, '印度洋', ...flightPath(context, start, end), 'focus');
+      }
+      coastPoint(context, ...start);
+      coastPoint(context, ...end);
+      mapLabel(context, width, height, '非洲东岸', start[0] - 14, start[1] - 17, 'coast');
+      mapLabel(context, width, height, '澳大利亚', end[0] + 17, end[1] - 17, 'coast');
+    });
+  }
+
+  function update() {
+    for (const button of choices) {
+      button.setAttribute('aria-pressed', String(button.dataset.worldChoice === selected));
+    }
+    feedback.textContent = selected === '印度洋' ? '找到了。路线跨过印度洋。'
+      : selected ? '再看看两个岸标之间的这片海。' : '';
+    draw();
+  }
+
+  for (const button of choices) {
+    button.addEventListener('click', () => {
+      selected = button.dataset.worldChoice;
+      update();
+      onChange?.({ selected });
+    });
+  }
   const observer = new ResizeObserver(draw);
   observer.observe(canvas);
   update();

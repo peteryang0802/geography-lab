@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 
 import {
   COAST_RINGS,
@@ -15,7 +15,7 @@ import {
   sunlightAt,
 } from './geo-model.js';
 import { getFlowPaths } from './flow-model.js';
-import { loadReliefImage } from './relief-image.js';
+import { loadReliefImage } from './relief-image.js?v=5';
 
 export { TERRAIN_SITES, contourProfile, sunlightAt } from './geo-model.js';
 
@@ -159,11 +159,9 @@ function makeGlobeFlow(flow, season) {
 }
 
 function installGlobe(scene, camera, controls, canvas, schedule) {
-  const dayTexture = makeCoastTexture(false);
-  const gridTexture = makeCoastTexture(true);
   const globe = new THREE.Mesh(
     new THREE.SphereGeometry(1, 78, 48),
-    new THREE.MeshPhongMaterial({ map: gridTexture, shininess: 13, specular: '#1e3d51' }),
+    new THREE.MeshPhongMaterial({ shininess: 13, specular: '#1e3d51' }),
   );
   scene.add(globe);
 
@@ -191,9 +189,6 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
   marker.add(point, halo);
   const pairedMarker = marker.clone();
   scene.add(marker, pairedMarker);
-  const siteMarkers = makeGlobeSites();
-  scene.add(siteMarkers);
-
   const fill = new THREE.HemisphereLight('#effbff', '#c6e5db', 1.85);
   const sun = new THREE.DirectionalLight('#ffedc6', 0.75);
   const sunSpot = new THREE.Mesh(
@@ -207,6 +202,9 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
   let previousAim;
   let previousFlow;
   let flowLayer;
+  let siteMarkers;
+  let dayTexture;
+  let gridTexture;
   let relief;
   let requestedRelief = false;
   let active = true;
@@ -247,7 +245,7 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
     const point = hit.point.clone().normalize();
     if (mode === 'terrain') {
       let selected;
-      let minimumDistance = Math.cos(8 * TO_RADIANS);
+      let minimumDistance = Math.cos(13 * TO_RADIANS);
       for (const [id, site] of Object.entries(TERRAIN_SITES)) {
         const distance = coordinateVector(site.lat, site.lon).dot(point);
         if (distance > minimumDistance) {
@@ -295,8 +293,15 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
 
       const circulation = mode === 'circulation';
       const coordinates = !mode || mode === 'coordinates';
-      if (terrain) enableRelief();
-      globe.material.map = coordinates ? gridTexture : terrain && relief ? relief : dayTexture;
+      if (terrain) {
+        enableRelief();
+        if (!siteMarkers) {
+          siteMarkers = makeGlobeSites();
+          scene.add(siteMarkers);
+        }
+      }
+      globe.material.map = coordinates ? (gridTexture ??= makeCoastTexture(true))
+        : terrain && relief ? relief : (dayTexture ??= makeCoastTexture(false));
       fill.intensity = daylight ? 0.26 : terrain ? 1.65 : 2.04;
       sun.intensity = daylight ? 2.98 : terrain ? 0.53 : 0.62;
       const localSun = daylight ? sunlightAt(lat, lon, hour, month).direction : coordinateVector(48, lon - 35);
@@ -304,7 +309,7 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
       sunSpot.position.copy(localSun).multiplyScalar(1.031);
       sunSpot.visible = daylight;
       marker.visible = daylight || coordinates;
-      siteMarkers.visible = terrain;
+      if (siteMarkers) siteMarkers.visible = terrain;
       if (terrain) {
         Object.keys(TERRAIN_SITES).forEach((id, index) => {
           const size = id === config.terrainFocus ? 0.235 : 0.15;
@@ -335,8 +340,8 @@ function installGlobe(scene, camera, controls, canvas, schedule) {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerCancel);
-      dayTexture.dispose();
-      gridTexture.dispose();
+      dayTexture?.dispose();
+      gridTexture?.dispose();
       relief?.dispose();
     },
   };
@@ -626,7 +631,7 @@ const SCENE_SETUP = {
   terrain: { radius: 4.9, direction: [0.01, 0.54, 1], focusHeight: 1.34 },
 };
 
-export function mountScene(host, kind, config = {}) {
+export function mountScene(host, kind, config = {}, { onFirstFrame, onRenderError } = {}) {
   const setup = SCENE_SETUP[kind];
   if (!setup) throw new Error(`Unknown scene kind: ${kind}`);
   const canvas = document.createElement('canvas');
@@ -643,7 +648,7 @@ export function mountScene(host, kind, config = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.02;
-  host.append(canvas);
+  if (onRenderError) renderer.debug.onShaderError = () => { throw new Error('3D shader compilation failed'); };
 
   const scene = new THREE.Scene();
   const camera = kind === 'terrain'
@@ -668,12 +673,24 @@ export function mountScene(host, kind, config = {}) {
   let pendingFrame = 0;
   let fitDistance = 0;
   let startingPose;
+  let firstFrame = true;
 
   function schedule() {
     if (disposed || pendingFrame) return;
     pendingFrame = requestAnimationFrame(() => {
       pendingFrame = 0;
-      if (!disposed) renderer.render(scene, camera);
+      if (disposed || context.isContextLost() || !host.clientWidth || !host.clientHeight) return;
+      try {
+        renderer.render(scene, camera);
+      } catch (error) {
+        if (!onRenderError) throw error;
+        onRenderError(error);
+        return;
+      }
+      if (firstFrame) {
+        firstFrame = false;
+        onFirstFrame?.();
+      }
     });
   }
 
@@ -788,8 +805,14 @@ export function mountScene(host, kind, config = {}) {
   canvas.addEventListener('webglcontextrestored', onContextRestored);
   const observer = new ResizeObserver(resize);
   observer.observe(host);
-  resize();
-  update(config);
-  if (config.cameraPose) restoreCamera(config.cameraPose);
+  host.append(canvas);
+  try {
+    resize();
+    update(config);
+    if (config.cameraPose) restoreCamera(config.cameraPose);
+  } catch (error) {
+    dispose();
+    throw error;
+  }
   return { update, dispose, captureCamera, restoreCamera };
 }

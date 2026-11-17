@@ -28,7 +28,8 @@ async function verifyLesson(page, id, next) {
     assert.equal(await lesson.locator('.inquiry-copy').count(), 0, 'inline evidence replaces reading paragraphs');
     assert.equal(await lesson.locator('.inquiry-picture-note img').count(), 2);
   } else assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
-  assert.ok((await lesson.locator(section('outside')).innerText()).includes('回到现实'));
+  assert.equal(await lesson.locator(section('outside')).getByRole('heading').innerText(),
+    id === 'land-ocean' ? '换张地图试一试' : '课外观察');
   assert.equal(await lesson.locator('a:visible').count(), 1, id + ' visible exits');
   assert.equal(await lesson.locator('.next-lesson').getAttribute('href'), next ? '#/lesson/' + next : '#/textbook');
   assert.ok(await page.evaluate(() => {
@@ -83,7 +84,7 @@ async function importantFlows(page) {
   await setRange(page, '#lab-walk', 8);
   assert.match(await page.locator('.lab-live').innerText(), /C 到 D.*米/);
   await page.locator('[data-toggle-view]').click();
-  await page.waitForFunction(() => document.querySelector('[data-stage-state]')?.textContent.includes('三维'));
+  await page.locator('[data-activity="contours-lab-contour"][data-three-state=three]').waitFor();
   await sameLabScreen(page);
   await page.reload();
   await page.locator('[data-rain-drain]').waitFor();
@@ -146,12 +147,25 @@ async function importantFlows(page) {
   await gallery.locator('[data-next]').click();
   await gallery.locator('[data-next]').click();
   await page.waitForFunction(() => document.querySelector('[data-inline-photos] [data-count]')?.textContent === '3 / 3');
+  const check = page.locator('[data-activity=land-ocean-world-check]');
+  await check.scrollIntoViewIfNeeded();
+  const checkMap = check.locator('canvas');
+  const mapBefore = await checkMap.evaluate(canvas => canvas.toDataURL());
+  await check.getByRole('button', { name: '大西洋' }).click();
+  assert.match(await check.getByRole('status').innerText(), /再看看/);
+  await check.getByRole('button', { name: '印度洋' }).click();
+  assert.match(await check.getByRole('status').innerText(), /跨过印度洋/);
+  assert.notEqual(await checkMap.evaluate(canvas => canvas.toDataURL()), mapBefore);
+  const fitsInViewport = await check.evaluate(host => host.getBoundingClientRect().height <= innerHeight);
+  assert.ok(fitsInViewport, 'regional map and answer choices fit in one screen');
   assert.equal(new URL(page.url()).hash, '#/lesson/land-ocean');
   await page.reload();
   await page.locator('[data-activity="land-ocean-lab-globe"]').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector('[data-inline-photos] [data-count]')?.textContent === '3 / 3');
   assert.equal(await world.getAttribute('data-world-active-route'), 'atlantic');
   assert.equal(await world.getAttribute('data-world-revealed'), 'true');
+  await check.scrollIntoViewIfNeeded();
+  assert.equal(await check.getByRole('button', { name: '印度洋' }).getAttribute('aria-pressed'), 'true');
   await checkWidth(page);
 
   await go(page, '#/concept/legend?from=%23%2Flesson%2Fmaps');
