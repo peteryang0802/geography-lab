@@ -136,7 +136,7 @@ export function mountSeafloorInquiry(host, saved, onChange = () => {}) {
     for (const button of controls.querySelectorAll('[data-seafloor-stop]')) {
       button.setAttribute('aria-pressed', String(button.dataset.seafloorStop === selected));
     }
-    feedback.textContent = selected ? stops[selected].feedback : '点一段海底。哪一段突然变深？';
+    feedback.textContent = selected ? stops[selected].feedback : '点图上的数字或选一段海底，找找哪里一下变深。';
     draw();
   }
 

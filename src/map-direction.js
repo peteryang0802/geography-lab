@@ -33,8 +33,9 @@ const examples = [
 ];
 
 export function mountMapDirection(host, saved, onChange = () => {}) {
+  host.classList.add('direction-panel');
   host.innerHTML = `
-    <h2>看图找方向</h2>
+    ${host.hasAttribute('data-activity') ? '' : '<h2>看图找方向</h2>'}
     <div class="direction-modes" role="group" aria-label="地图示例">
       ${examples.map(example => `<button class="chip" type="button" data-example="${example.id}" aria-pressed="false">${example.label}</button>`).join('')}
     </div>

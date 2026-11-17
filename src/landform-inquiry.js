@@ -23,6 +23,7 @@ const spots = {
     bounds: [352, 268],
   },
 };
+const markers = [['range', 246, 50], ['plateau', 461, 109]];
 
 const styles = `<style>
   .landform-plot { margin: 0; }
@@ -108,7 +109,7 @@ function drawProfile(context, selected) {
     context.stroke();
   }
 
-  for (const [key, x, y] of [['range', 246, 50], ['plateau', 461, 109]]) {
+  for (const [key, x, y] of markers) {
     context.beginPath();
     context.arc(x, y, selected === key ? 16 : 14, 0, Math.PI * 2);
     context.fillStyle = '#fffdf1';
@@ -159,12 +160,11 @@ export function mountLandformInquiry(host, saved = {}, onChange = () => {}) {
     for (const control of controls) {
       control.setAttribute('aria-pressed', String(control.dataset.landformSpot === selected));
     }
-    feedback.textContent = spots[selected]?.description ?? '两处都很高。点一下各自的名字，看看哪一处起伏更大。';
+    feedback.textContent = spots[selected]?.description ?? '两处都很高。点 A 或 B，看看哪一处起伏更大。';
     paint();
   }
 
-  function handleChoice(event) {
-    const choice = event.target.closest('[data-landform-spot]')?.dataset.landformSpot;
+  function select(choice) {
     if (!choice || choice === selected) return;
     selected = choice;
     update();
@@ -173,10 +173,15 @@ export function mountLandformInquiry(host, saved = {}, onChange = () => {}) {
 
   const observer = new ResizeObserver(paint);
   observer.observe(canvas);
-  group.addEventListener('click', handleChoice);
+  group.addEventListener('click', event => select(event.target.closest('[data-landform-spot]')?.dataset.landformSpot));
+  canvas.addEventListener('click', event => {
+    const bounds = canvas.getBoundingClientRect();
+    const hit = markers.find(([, x, y]) => Math.hypot(
+      bounds.left + x * bounds.width / WIDTH - event.clientX,
+      bounds.top + y * bounds.height / HEIGHT - event.clientY,
+    ) <= 22);
+    select(hit?.[0]);
+  });
   update();
-  return () => {
-    observer.disconnect();
-    group.removeEventListener('click', handleChoice);
-  };
+  return () => observer.disconnect();
 }

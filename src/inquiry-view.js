@@ -7,7 +7,6 @@ export const inquiryViews = {
     homeDescription: '从课上学过的一件事出发，解释一个身边的现象。',
     look: '动手找线索',
     reading: '读懂刚才看到的',
-    compare: '换个角度想一想',
   },
   nearby: {
     name: '身边的地理',
@@ -15,7 +14,6 @@ export const inquiryViews = {
     homeDescription: '留意每天经过的地方，看看地图能告诉我们什么。',
     look: '看看这里有什么线索',
     reading: '地图告诉了我们什么',
-    compare: '换个地方，还能这样解释吗？',
   },
   fieldwork: {
     name: '地理调查簿',
@@ -23,7 +21,6 @@ export const inquiryViews = {
     homeDescription: '先猜一猜，再用证据看看自己的想法站不站得住。',
     look: '先找一条证据',
     reading: '把线索放在一起',
-    compare: '再核对一条线索',
   },
 };
 
@@ -36,6 +33,11 @@ export const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').
   .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
 const evidencePhotos = {
+  intro: {
+    file: 'puddle', alt: '雨后路面上有几处水洼',
+    text: '看水停在哪里，再看旁边有没有同一场雨后已经变干的路面。',
+    credit: '实景 · Paul The Writer / CC0',
+  },
   contours: {
     file: 'puddle', alt: '雨后的一条路，部分路面还有积水',
     text: '这是一张雨后道路照片。看水停在哪里，再找找水可能从哪里流过来。',
@@ -70,18 +72,14 @@ function photoFigure(photo) {
   </figure>`;
 }
 
-function pointOfRecall(text) {
-  return `<details class="inquiry-hint" data-remember="recall-hint"><summary>想起课堂上的方法</summary><p>${escapeHtml(text)}</p></details>`;
-}
-
 function evidenceReading(entry, data, view, extra) {
   return `<section class="inquiry-reading" data-inquiry-section="reading" aria-labelledby="reading-title">
     <h2 id="reading-title">${view.reading}</h2>
-    <div class="inquiry-copy">${data.read.map(({ title, text }, index) =>
+    <div class="inquiry-reading-body"><div class="inquiry-copy">${data.read.map(({ title, text }, index) =>
       `<section><h3>${escapeHtml(title)}</h3>
-      ${entry.id === 'contours' && index === 0 ? '<div class="height-example"><span>山顶 <strong>460 米</strong></span><span>山脚 <strong>120 米</strong></span><span>两处相差 <strong>340 米</strong></span></div>' : ''}
+      ${entry.id === 'contours' && index === 0 ? '<p class="height-example">山顶比山脚高 <strong>460 − 120 = 340 米</strong></p>' : ''}
       <p>${escapeHtml(text)}</p></section>`).join('')}</div>
-    ${extra}
+    ${extra}</div>
   </section>`;
 }
 
@@ -100,32 +98,26 @@ function oceanLifeFigure() {
   </figure>`;
 }
 
-export function renderInquiry({ entry, textbook, data, activityMarkup, outsideMarkup, footer, note, viewId }) {
+export function renderInquiry({ entry, textbook, data, activityMarkup, transferMarkup, outsideMarkup, footer, note, viewId }) {
   const view = inquiryViews[viewId];
   const visualReading = data.visualReading;
   const photo = evidencePhotos[entry.id];
   const illustration = photo ? photoFigure(photo) : '';
-  const recall = visualReading ? '' : pointOfRecall(data.recall);
   const evidence = `<section class="inquiry-evidence" data-inquiry-section="evidence" aria-labelledby="evidence-title">
       <header class="inquiry-section-head"><h2 id="evidence-title">${view.look}</h2></header>
       ${activityMarkup}
-      ${viewId === 'fieldwork' && !visualReading ? `<p class="inquiry-first-observation">${escapeHtml(data.compare)}</p>` : ''}
     </section>`;
-  const compare = viewId === 'fieldwork' || visualReading ? '' : `<section class="inquiry-transfer" data-inquiry-section="transfer">
-    <h2>${view.compare}</h2><p>${escapeHtml(data.compare)}</p></section>`;
   return `<article class="course-lesson inquiry-lesson" data-inquiry-lesson="${escapeHtml(entry.id)}">
     <header class="inquiry-intro" data-inquiry-section="opening">
       <p class="inquiry-location">${escapeHtml(textbook)} <span>教材第 ${entry.page} 页起</span></p>
       <h1>${escapeHtml(entry.title)}</h1>
       <h2>${escapeHtml(data.question)}</h2>
       <p>${escapeHtml(data.guess)}</p>
-      ${viewId === 'recall' ? recall : ''}
     </header>
     ${evidence}
     ${viewId === 'nearby' && photo ? illustration : ''}
-    ${viewId !== 'recall' ? recall : ''}
     ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
-    ${compare}
+    ${transferMarkup}
     ${note}
     ${outsideMarkup || `<section class="inquiry-outside" data-inquiry-section="outside">
       <h2>课外观察</h2><p>${escapeHtml(data.closing)}</p>

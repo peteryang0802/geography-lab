@@ -137,7 +137,7 @@ const controls = (kind, settings, inline) => {
       <div class="control-group"><label for="lab-lon">经度 <output data-value="lon"></output></label><input id="lab-lon" type="range" min="-180" max="180" value="${settings.lon}" data-number="lon"></div>
     </div>
     <div data-globe-daylight class="control-pair" hidden>
-      <div class="control-group"><label for="lab-hour">世界时 <output data-value="hour"></output></label><input id="lab-hour" type="range" min="0" max="23" value="${settings.hour}" data-number="hour"></div>
+      <div class="control-group" data-day-clock><label for="lab-hour">北京时间 <output data-value="hour"></output></label><input id="lab-hour" type="range" min="0" max="23" value="${(settings.hour + 8) % 24}" data-number="hour"></div>
       <div class="control-group"><label for="lab-month">月份 <output data-value="month"></output></label><input id="lab-month" type="range" min="1" max="12" value="${settings.month}" data-number="month"></div>
     </div>
     <div class="mini-actions" aria-label="经纬示例" data-globe-points>
@@ -179,9 +179,9 @@ const controls = (kind, settings, inline) => {
 const challenges = {
   globe: {
     title: '北京附近什么时候在照亮的一侧？',
-    prompt: '选“昼夜和季节”，将位置设为北京附近。先停在世界时 04:00，再拨到 16:00。两个时刻中，哪一个时刻该地点在亮面？',
-    options: ['04:00 在亮面，16:00 在暗面', '04:00 在暗面，16:00 在亮面'],
-    feedback: ['你在用同一点落在亮面或暗面的证据判读。04:00 UTC 相当于北京 12:00，16:00 UTC 相当于北京次日 00:00。', '核对控制台的“该点日照”。先找亮面，再看地点标记。'],
+    prompt: '选「昼夜四季」，把地点设在北京附近。把北京时间拨到中午 12:00，再拨到半夜 00:00，哪个时刻的标记在亮面？',
+    options: ['中午在亮面，半夜在暗面', '中午在暗面，半夜在亮面'],
+    feedback: ['北京附近同一个点，正午转到朝向太阳的一侧，半夜转到背向太阳的一侧。', '先找亮面，再看北京附近的标记落在哪一边。'],
   },
   contour: {
     title: '哪条山路有一小段更陡？',
@@ -207,9 +207,13 @@ function challengeHtml(kind, inline) {
     : `<section class="panel"><h2>${task.title}</h2>${answers}</section>`;
 }
 
-export function mountLabUI(host, lab, params, saved, onChange, { inline = false, origin = location.hash, onTopic } = {}) {
+export function mountLabUI(host, lab, params, saved, onChange, { inline = false, fixedMode, origin = location.hash, onTopic } = {}) {
   const kind = lab.id;
   let settings = clipSettings(kind, saved, params);
+  if (fixedMode && settings.mode !== fixedMode) {
+    settings.mode = fixedMode;
+    Object.assign(settings, globeFocus(settings), { viewYaw: 0, cameraPose: undefined });
+  }
   const challenge = challenges[kind];
   const correctAnswer = challenge.answer ?? 0;
   const sameExercise = kind !== 'contour' || saved?.exerciseVersion === settings.exerciseVersion;
@@ -228,7 +232,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     <div class="lesson-shell lab-layout" data-lab-kind="${kind}">
       <div class="lab-stage">
         <div class="stage-head">
-          ${kind === 'globe' ? `<div role="group" aria-label="地球仪图层" class="mode-strip">
+          ${kind === 'globe' && !fixedMode ? `<div role="group" aria-label="地球仪图层" class="mode-strip">
             <button type="button" class="chip" data-mode="coordinates">经纬</button>
             <button type="button" class="chip" data-mode="daylight">昼夜四季</button>
             <button type="button" class="chip" data-mode="terrain">地形</button>
@@ -276,7 +280,9 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
   const rotatable = matchMedia('(pointer: coarse)').matches;
 
   function syncControls() {
-    for (const input of host.querySelectorAll('[data-number]')) input.value = settings[input.dataset.number];
+    for (const input of host.querySelectorAll('[data-number]')) {
+      input.value = input.dataset.number === 'hour' ? (settings.hour + 8) % 24 : settings[input.dataset.number];
+    }
     for (const input of host.querySelectorAll('[data-site]')) input.value = settings[input.dataset.site];
     for (const button of host.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === settings.mode));
     for (const button of host.querySelectorAll('[data-section]')) button.setAttribute('aria-pressed', String(button.dataset.section === settings.section));
@@ -285,6 +291,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       host.querySelector('[data-globe-points]').hidden = settings.mode !== 'coordinates';
       host.querySelector('[data-day-points]').hidden = settings.mode !== 'daylight';
       host.querySelector('[data-day-pair]').setAttribute('aria-pressed', String(settings.dayPair));
+      host.querySelector('[data-day-clock]').hidden = settings.dayPair;
       host.querySelector('[data-globe-daylight]').hidden = settings.mode !== 'daylight';
       host.querySelector('[data-globe-terrain]').hidden = settings.mode !== 'terrain';
       host.querySelector('[data-globe-flows]').hidden = settings.mode !== 'circulation';
@@ -298,7 +305,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       for (const field of ['lat', 'lon', 'hour', 'month']) {
         const value = Math.round(settings[field]);
         host.querySelector('[data-value="' + field + '"]').textContent = field === 'month' ? value + ' 月' : field === 'hour'
-          ? String(value).padStart(2, '0') + ':00'
+          ? String((value + 8) % 24).padStart(2, '0') + ':00'
           : value === 0 ? '0°' : Math.abs(value) + '° ' + (field === 'lat' ? value > 0 ? 'N' : 'S' : value > 0 ? 'E' : 'W');
       }
       const location = coordinates(settings.lat, settings.lon);
@@ -343,7 +350,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
         }
         reading.textContent = settings.dayPair
           ? '两个点经度相同，分别在赤道南北。把月份从 6 月拨到 12 月，看看哪里白天更长。数字按各月中旬的日照取整。'
-          : '拨动时刻，看地点什么时候转到亮面。这里的时刻用世界时（UTC），加 8 小时就是北京时间。';
+          : '拨动北京时间，看所选地点什么时候转到亮面。';
       } else {
         live.textContent = `当前坐标 ${location}`;
         reading.textContent = '纬度用来比较南北位置，经度用来比较东西位置。两条线的交点可以帮你找到这个点。';
@@ -523,7 +530,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     const value = Number(input.value);
     if (key === 'lat') changePoint(value, settings.lon);
     else if (key === 'lon') changePoint(settings.lat, value);
-    else change({ [key]: value });
+    else change({ [key]: key === 'hour' ? (value + 16) % 24 : value });
   });
   for (const button of host.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {
     change({ mode: button.dataset.mode }, true);

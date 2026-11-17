@@ -59,12 +59,32 @@ function marker(ctx, x, y, value, active) {
   label(ctx, value, x, y, active ? 'white' : ink, 27, 'center');
 }
 
+function spot(ctx, x, y, value, active) {
+  circle(ctx, x, y, active ? 7 : 4, active ? teal : ink);
+  label(ctx, value, x, y - 23, ink, 25, 'center');
+}
+
+function shell(ctx, x, y, active) {
+  const points = Array.from({ length: 40 }, (_, index) => {
+    const angle = index * 0.35;
+    const radius = 0.9 * index;
+    return [x + radius * Math.cos(angle), y + radius * Math.sin(angle)];
+  });
+  line(ctx, points, active ? '#764119' : ink, active ? 6 : 3);
+}
+
+const deliveryOptions = [
+  ['sea', '海运', 32, 3],
+  ['rail', '铁路', 15, 8],
+  ['air', '航空', 4, 30],
+];
+
 const activities = {
   'land-change': {
-    description: '左边画着海底岩层，右边画着露出海面的山中岩层。两边的贝壳都是同一组岩层的化石线索。',
+    description: '左边画着海底岩层，右边画着露出海面的山中岩层。同一组岩层里发现了海洋动物的贝壳化石。',
     start: '先点「找化石」，看同一层岩石出现在什么地方。',
     options: [
-      ['fossil', '找化石', '贝壳化石嵌在岩层里，提示这层岩石形成时可能处在海洋环境。'],
+      ['fossil', '找化石', '海洋动物的贝壳嵌在这组岩层里，提示岩石形成时可能处在海洋环境。'],
       ['uplift', '看岩层抬升', '如果这片岩层后来上升，海里形成的岩石就可能露出水面，出现在高处。图中是一种解释。'],
     ],
     draw(ctx, selected) {
@@ -78,33 +98,38 @@ const activities = {
         arrow(ctx, 397, 183, 397, 119, orange);
         arrow(ctx, 624, 182, 624, 119, orange);
       }
-      marker(ctx, 168, 204, '贝', selected === 'fossil');
-      marker(ctx, 527, 119, '贝', selected === 'fossil');
+      shell(ctx, 168, 197, selected === 'fossil');
+      shell(ctx, 527, 112, selected === 'fossil');
       label(ctx, '海底的岩层', 175, 255, ink, 29, 'center');
       label(ctx, '出现在山里的岩层', 530, 255, ink, 29, 'center');
       label(ctx, '岩层变化示意', 25, 33, muted, 26);
     },
   },
   'climate-life': {
-    description: '三种屋顶接受同样多的雨。平屋顶没有排水口，坡屋顶配檐沟，中间低的屋顶没有另外设置排水口。',
+    description: drained => '三种屋顶接受同样多的雨。平屋顶没有排水口，坡屋顶配檐沟。' + (drained ? '中间低的屋顶增加了排水口。' : '中间低的屋顶还未加排水口。'),
     start: '材料和雨量相同。挑一个屋顶，看看雨往哪儿走。',
     options: [
       ['flat', '平屋顶', '这张图里的平屋顶没有排水口，雨水容易积在屋面上。'],
       ['pitched', '坡屋顶', '水会沿斜面流到两侧，檐沟再把它引开。'],
       ['sunken', '中间低', '两边的水流向中间。这里没有排水口，低处容易积水。'],
     ],
-    draw(ctx, selected) {
+    adjustment: {
+      label: '给低处加排水口',
+      focus: 'sunken',
+      feedback: selected => selected === 'sunken' ? '两边的水仍流向中间。加上出口后，雨水能沿着管道离开屋顶。' : '',
+    },
+    draw(ctx, selected, drained) {
       const roofs = [
         { key: 'flat', x: 116, shape: [[-75, 126], [75, 126]], name: '平屋顶' },
         { key: 'pitched', x: 345, shape: [[-75, 151], [0, 95], [75, 151]], name: '坡屋顶' },
         { key: 'sunken', x: 574, shape: [[-75, 117], [0, 150], [75, 117]], name: '中间低' },
       ];
+      for (const x of [229, 459]) line(ctx, [[x, 52], [x, 241]], '#d8cdb7', 2);
       roofs.forEach(({ key, x, shape, name }) => {
-        box(ctx, x - 94, 23, 188, 246, selected === key ? '#d8eee1' : '#f4ebd9');
         box(ctx, x - 63, 151, 126, 70, '#dec9a9');
         line(ctx, shape.map(([offset, y]) => [x + offset, y]), ink, 10);
         [-52, 0, 52].forEach((offset) => line(ctx, [[x + offset, 52], [x + offset - 8, 67]], blue, 5));
-        label(ctx, name, x, 245, ink, 28, 'center');
+        label(ctx, name, x, 245, selected === key ? teal : ink, 28, 'center');
       });
       if (selected === 'flat') line(ctx, [[64, 117], [168, 117]], blue, 7);
       if (selected === 'pitched') {
@@ -116,47 +141,58 @@ const activities = {
       if (selected === 'sunken') {
         arrow(ctx, 515, 116, 562, 136);
         arrow(ctx, 633, 116, 586, 136);
-        line(ctx, [[559, 141], [588, 141]], blue, 5);
+        if (!drained) line(ctx, [[559, 141], [588, 141]], blue, 5);
       }
+      if (drained) arrow(ctx, 574, 143, 574, 211);
     },
   },
   cooperation: {
-    description: '模拟方案：海运32天、3千元，铁路15天、8千元，航空4天、30千元。竖虚线标在18天。',
+    description: urgent => `模拟方案。海运 32 天、3 千元，铁路 15 天、8 千元，航空 4 天、30 千元。竖虚线标在 ${urgent ? '10' : '18'} 天。`,
     start: '先看哪些运输方式能在 18 天内送到，再比价格。',
     options: [
       ['sea', '海运', '3 千元最便宜。32 天才到，比期限晚了 14 天。'],
       ['rail', '铁路', '15 天可以送到。铁路和航空都能准时，铁路花的更少。'],
       ['air', '航空', '4 天可以送到。若只需要在 18 天内送到，还能找一个更省钱的。'],
     ],
-    draw(ctx, selected) {
-      const rows = [['sea', '海运', 32, 3], ['rail', '铁路', 15, 8], ['air', '航空', 4, 30]];
+    adjustment: {
+      label: '期限改为 10 天',
+      feedback: selected => ({
+        sea: '海运最便宜，却需要 32 天。10 天的期限内来不及。',
+        rail: '铁路要 15 天。原来能准时，改成 10 天就来不及了。',
+        air: '飞机只要 4 天。这组报价里，只有航空能在 10 天内送到。',
+      })[selected] ?? '期限线往左移了。看看还有哪根条来得及。',
+    },
+    draw(ctx, selected, urgent) {
+      const deadline = urgent ? 10 : 18;
       const startX = 114;
       const dayWidth = 12;
-      const deadlineX = startX + 18 * dayWidth;
-      rows.forEach(([key, name, days, cost], index) => {
+      const deadlineX = startX + deadline * dayWidth;
+      deliveryOptions.forEach(([key, name, days, cost], index) => {
         const y = 84 + index * 66;
         label(ctx, name, 20, y + 14);
-        box(ctx, startX, y, days * dayWidth, 28, selected === key ? teal : '#94bdb2');
+        box(ctx, startX, y + 3, days * dayWidth, days <= deadline ? 23 : 18, selected === key ? teal : days <= deadline ? '#94bdb2' : '#ccc3ae');
         label(ctx, `${days}天 · ${cost}千元`, 515, y + 14, ink, 25);
       });
       ctx.setLineDash([7, 7]);
       line(ctx, [[deadlineX, 59], [deadlineX, 266]], orange, 3);
       ctx.setLineDash([]);
-      label(ctx, '18 天期限', deadlineX, 39, orange, 28, 'center');
+      label(ctx, `${deadline} 天期限`, deadlineX, 39, orange, 28, 'center');
     },
   },
   'project-earth': {
-    description: '三颗想象中的行星记录。甲是岩质，可能有液态水。乙是气态巨行星，没有可着陆的固体表面。丙是岩质，表面过热。',
-    start: '要找到能看地表、又可能有液态水的地方。先点一颗看看。',
+    description: '从左到右是三颗想象中的行星，甲、乙、丙。点行星或用按钮查观测记录。',
+    start: '点一颗行星看记录，再比较能不能着陆、有没有可能存在液态水。',
+    hotspots: { a: { x: 116, y: 121 }, b: { x: 345, y: 121 }, c: { x: 574, y: 121 } },
+    revealOnVisit: true,
     options: [
       ['a', '看甲', '有岩石地表，有些地方可能有液态水。可以优先调查，下一步要实际找水。'],
       ['b', '看乙', '主要由气体组成，找不到可着陆的固体表面。这次想探索地表，可以看看别处。'],
       ['c', '看丙', '它有岩石地表，不过已知表面过热。再看看有没有更符合两条线索的地方。'],
     ],
-    draw(ctx, selected) {
+    draw(ctx, selected, _alternate, visited) {
       box(ctx, 0, 0, width, height, '#edf1ed');
       const planets = [
-        ['a', 116, 49, '#70a99f', '甲', '岩质 · 可能有水'],
+        ['a', 116, 49, '#70a99f', '甲', '岩质 · 或有液态水'],
         ['b', 345, 65, '#cfaa7d', '乙', '气态 · 无固体表面'],
         ['c', 574, 43, '#da9070', '丙', '岩质 · 表面过热'],
       ];
@@ -170,17 +206,17 @@ const activities = {
         }
         if (key === 'c') circle(ctx, x + 11, 115, 13, '#ad5f48');
         label(ctx, name, x, 209, ink, 31, 'center');
-        label(ctx, clue, x, 246, ink, 24, 'center');
+        if (visited.has(key)) label(ctx, clue, x, 246, ink, 24, 'center');
       });
     },
   },
   'project-seafloor': {
-    description: '从左侧陆地出发，甲在近岸水浅且平缓处，乙在变深很快的坡上，丙在远岸又深又宽的地方。图未按比例绘制。',
-    start: '从左到右点三处。哪一段突然变深？',
+    description: '距海面深度。甲在近岸，深 90 米。乙在陡坡上，深 480 米。丙在远岸平底上，深 2500 米。剖面为示意，未按比例绘制。',
+    start: '模拟潜水艇最多能下潜 500 米。先找海底突然变深的地方，再挑一个能到的站点。',
     options: [
-      ['shelf', '甲 · 近岸', '岸边这段水浅，海底坡度也小。这一段叫大陆架。'],
-      ['slope', '乙 · 中段', '水平往前一点，深度就变了很多。这一段叫大陆坡。'],
-      ['basin', '丙 · 远海', '远处的海底深而宽。这张剖面里，它是洋盆。'],
+      ['shelf', '查看甲站', '这里水浅，海底平缓，是大陆架。深 90 米，潜水艇能到。'],
+      ['slope', '查看乙站', '水平往前一点，深度就变了很多，这是大陆坡。乙站深 480 米，潜水艇也能到。'],
+      ['basin', '查看丙站', '这里深而宽，是洋盆。深 2,500 米，超过潜水艇的下潜上限。'],
     ],
     draw(ctx, selected) {
       box(ctx, 0, 77, width, 192, '#bcdde8');
@@ -189,11 +225,12 @@ const activities = {
       if (selected === 'shelf') line(ctx, [[120, 99], [262, 123]], teal, 8);
       if (selected === 'slope') line(ctx, [[262, 123], [377, 216]], teal, 8);
       if (selected === 'basin') line(ctx, [[459, 229], [665, 228]], teal, 8);
-      marker(ctx, 185, 110, '甲', selected === 'shelf');
-      marker(ctx, 321, 168, '乙', selected === 'slope');
-      marker(ctx, 570, 230, '丙', selected === 'basin');
+      spot(ctx, 185, 111, '甲 90 米', selected === 'shelf');
+      spot(ctx, 321, 171, '乙 480 米', selected === 'slope');
+      spot(ctx, 570, 230, '丙 2,500 米', selected === 'basin');
       label(ctx, '陆地', 23, 30, muted, 24);
       label(ctx, '海面', 573, 53, blue, 26);
+      label(ctx, '剖面示意 · 未按比例', 668, 268, ink, 22, 'right');
     },
   },
   'project-nest': {
@@ -216,11 +253,17 @@ const activities = {
       circle(ctx, 603, 125, 11, '#7e705b');
       line(ctx, [[603, 139], [603, 168], [588, 184]], '#7e705b', 6);
       line(ctx, [[603, 168], [619, 183]], '#7e705b', 6);
-      marker(ctx, 102, 189, 'A', selected === 'a');
-      marker(ctx, 370, 189, 'B', selected === 'b');
-      marker(ctx, 574, 215, 'C', selected === 'c');
+      spot(ctx, 102, 189, 'A', selected === 'a');
+      spot(ctx, 370, 189, 'B', selected === 'b');
+      spot(ctx, 574, 215, 'C', selected === 'c');
       label(ctx, '风口', 34, 47, blue, 28);
       label(ctx, '步道', 642, 83, ink, 28, 'center');
+      if (selected === 'a') arrow(ctx, 33, 155, 95, 174, orange);
+      if (selected === 'b') {
+        arrow(ctx, 200, 107, 261, 108, blue);
+        label(ctx, '有遮挡', 352, 225, ink, 25, 'center');
+      }
+      if (selected === 'c') arrow(ctx, 607, 185, 581, 204, orange);
     },
   },
   'project-made-in-china': {
@@ -235,11 +278,14 @@ const activities = {
       box(ctx, 53, 85, 117, 156, '#83aaa1');
       box(ctx, 65, 55, 93, 28, '#47756a');
       box(ctx, 71, 100, 13, 125, '#c3e1d6');
-      box(ctx, 235, 37, 423, 213, selected === 'tested' ? '#deeee3' : '#f4ebd9');
+      line(ctx, [[219, 49], [219, 249]], '#b6ab91', 3);
       label(ctx, '模拟测温记录', 263, 69, ink, 28);
       label(ctx, '室温 · 装满热水并盖紧', 263, 115, muted, 25);
-      label(ctx, '6 小时后', 263, 182, ink, 31);
-      label(ctx, '62 ℃', 448, 181, teal, 55);
+      label(ctx, '6 小时后', 263, 173, ink, 31);
+      label(ctx, '62 ℃', 448, 171, teal, 55);
+      if (selected === 'tested') line(ctx, [[448, 205], [574, 205]], teal, 5);
+      if (selected === 'best') label(ctx, '其他杯子的对照数据还缺', 263, 239, orange, 25);
+      if (selected === 'always') label(ctx, '这里只有这一次记录', 263, 239, orange, 25);
     },
   },
 };
@@ -291,7 +337,11 @@ function routeFeedback(path) {
   if (path.length === 0) return '从起点出发。先点你想去的地方。';
   const mismatch = path.findIndex((stop, index) => stop !== routeAnswer[index]);
   const hints = ['1 号旗和起点在同一边，可以先去找 1 号旗。', '两面旗中间隔着河。看看桥在 1 号旗的哪一边。', '过桥后先找东岸的 2 号旗。', '两面旗都找到了。再走到终点。'];
-  if (mismatch >= 0) return hints[mismatch];
+  if (mismatch >= 0) {
+    const wrongStop = path[mismatch];
+    const crossedWater = mismatch < 2 ? ['flag2', 'finish'].includes(wrongStop) : wrongStop === 'flag1';
+    return crossedWater ? '橙色虚线穿过了河。退一步，沿能走的路过桥。' : hints[mismatch];
+  }
   if (path.length === routeAnswer.length) return '两面旗都找到了，也从桥上过了河。';
   return hints[path.length];
 }
@@ -302,27 +352,51 @@ function activityFrame(host, description) {
   canvas.height = height;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', description);
-  canvas.style.cssText = 'display:block;width:100%;height:auto;max-height:215px;object-fit:contain;border-radius:12px;background:#f8f4e9';
+  const figure = document.createElement('figure');
+  figure.className = 'evidence-diagram';
+  figure.append(canvas);
   const controls = document.createElement('div');
-  controls.className = 'actions';
-  controls.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0';
+  controls.className = 'actions evidence-controls';
   const feedback = document.createElement('p');
   feedback.setAttribute('role', 'status');
-  feedback.style.cssText = 'margin:4px 0 0;min-height:2.9em;line-height:1.45';
-  host.replaceChildren(canvas, controls, feedback);
+  feedback.className = 'evidence-feedback';
+  const dock = document.createElement('div');
+  dock.className = 'evidence-dock';
+  dock.append(controls, feedback);
+  const stage = document.createElement('div');
+  stage.className = 'evidence-activity';
+  stage.append(figure, dock);
+  host.replaceChildren(stage);
   const ctx = canvas.getContext('2d');
-  return { controls, feedback, paint(draw, value) {
-    if (!ctx) return;
-    box(ctx, 0, 0, width, height, '#f8f4e9');
-    draw(ctx, value);
-  } };
+  return {
+    canvas,
+    controls,
+    feedback,
+    paint(draw, value, alternate, accessibleDescription, visited) {
+      if (accessibleDescription) canvas.setAttribute('aria-label', accessibleDescription);
+      if (!ctx) return;
+      box(ctx, 0, 0, width, height, '#f8f4e9');
+      draw(ctx, value, alternate, visited);
+    },
+  };
+}
+
+function bindDiagramStops(canvas, points, select) {
+  canvas.dataset.evidencePick = '';
+  canvas.addEventListener('click', event => {
+    const bounds = canvas.getBoundingClientRect();
+    const hit = Object.entries(points).find(([, { x, y }]) => Math.hypot(
+      bounds.left + x * bounds.width / width - event.clientX,
+      bounds.top + y * bounds.height / height - event.clientY,
+    ) <= 22);
+    if (hit) select(hit[0]);
+  });
 }
 
 function addButton(controls, title, onClick) {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'chip';
-  button.style.minHeight = '44px';
+  button.className = 'button';
   button.textContent = title;
   button.addEventListener('click', onClick);
   controls.append(button);
@@ -330,13 +404,16 @@ function addButton(controls, title, onClick) {
 }
 
 function mountRoute(host, saved, onChange) {
-  const { controls, feedback, paint } = activityFrame(host, '上方为北。起点和1号旗在河西岸，2号旗和终点在东岸。唯一的桥在1号旗北面。');
+  const { canvas, controls, feedback, paint } = activityFrame(host, '上方为北。起点和1号旗在河西岸，2号旗和终点在东岸。唯一的桥在1号旗北面。');
   let path = Array.isArray(saved?.path) ? saved.path.filter((stop) => routeAnswer.includes(stop)).slice(0, 4) : [];
-  const stops = routeAnswer.map((key) => addButton(controls, routeStops[key].label, () => {
-    path = path.length === routeAnswer.length ? [key] : [...path, key];
+  function addStop(key) {
+    if (path.length >= routeAnswer.length) return;
+    path = [...path, key];
     update();
     onChange?.({ path });
-  }));
+  }
+  const stops = routeAnswer.map(key => addButton(controls, routeStops[key].label, () => addStop(key)));
+  bindDiagramStops(canvas, Object.fromEntries(routeAnswer.map(key => [key, routeStops[key]])), addStop);
   const undo = addButton(controls, '退一步', () => {
     path = path.slice(0, -1);
     update();
@@ -344,7 +421,10 @@ function mountRoute(host, saved, onChange) {
   });
   function update() {
     undo.disabled = path.length === 0;
-    stops.forEach((button, index) => button.dataset.active = String(path.includes(routeAnswer[index])));
+    stops.forEach((button, index) => {
+      button.dataset.active = String(path.includes(routeAnswer[index]));
+      button.disabled = path.length === routeAnswer.length;
+    });
     const names = path.map((key) => routeStops[key].label);
     feedback.textContent = `${names.length ? `起点 → ${names.join(' → ')}。` : ''}${routeFeedback(path)}`;
     paint(drawRoute, path);
@@ -362,22 +442,47 @@ export function mountEvidenceActivity(host, id, saved, onChange) {
     return;
   }
   if (!hasEvidenceActivity(id)) return;
-  const { description, start, options, draw } = activities[id];
-  const { controls, feedback, paint } = activityFrame(host, description);
+  const { description, start, options, adjustment, revealOnVisit, hotspots, draw } = activities[id];
+  let alternate = saved?.alternate === true;
+  const describe = () => typeof description === 'function' ? description(alternate) : description;
+  const { canvas, controls, feedback, paint } = activityFrame(host, describe());
   let selected = saved?.selected;
-  const buttons = options.map(([key, title]) => addButton(controls, title, () => {
+  const visited = new Set();
+  if (revealOnVisit) {
+    const remembered = Array.isArray(saved?.visited) ? saved.visited : [selected];
+    for (const [key] of options) if (remembered.includes(key)) visited.add(key);
+  }
+  function select(key) {
     selected = key;
+    if (revealOnVisit) visited.add(key);
+    save();
+  }
+  const buttons = options.map(([key, title]) => addButton(controls, title, () => select(key)));
+  if (hotspots) bindDiagramStops(canvas, hotspots, select);
+  const toggle = adjustment && addButton(controls, adjustment.label, () => {
+    alternate = !alternate;
+    selected = adjustment.focus ?? selected;
+    save();
+  });
+
+  function save() {
     update();
-    onChange?.({ selected });
-  }));
+    const settings = { selected };
+    if (adjustment) settings.alternate = alternate;
+    if (revealOnVisit) settings.visited = [...visited];
+    onChange?.(settings);
+  }
+
   function update() {
     buttons.forEach((button, index) => {
       const active = String(selected === options[index][0]);
       button.setAttribute('aria-pressed', active);
       button.dataset.active = active;
     });
-    feedback.textContent = options.find(([key]) => key === selected)?.[2] ?? start;
-    paint(draw, selected);
+    toggle?.setAttribute('aria-pressed', String(alternate));
+    const explanation = alternate && adjustment?.feedback(selected);
+    feedback.textContent = explanation || (options.find(([key]) => key === selected)?.[2] ?? start);
+    paint(draw, selected, alternate, describe(), visited);
   }
   update();
 }

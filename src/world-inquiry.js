@@ -90,25 +90,23 @@ function paintWorld(context, width, height, center, span = 360, north = 90) {
 function mapLabel(context, width, height, word, x, y, type) {
   const fontSize = Math.max(12, Math.min(18, width * 0.043));
   const palette = {
-    land: ['#fff9e6', '#383721'],
-    ocean: ['#e7f4f8', '#133e51'],
-    focus: ['#185578', '#ffffff'],
-    coast: ['#fff9e6', '#3e3321'],
+    land: ['#fff9e6', '#34341d'],
+    ocean: ['#e9f7fb', '#163d50'],
+    focus: ['#fffbed', '#753817'],
+    coast: ['#fff9e6', '#4d321c'],
   };
   context.font = `700 ${fontSize}px system-ui, sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const boxWidth = context.measureText(word).width + 10;
-  const boxHeight = fontSize + 6;
-  const half = boxWidth / 2 + 2;
+  const half = context.measureText(word).width / 2 + 5;
   const centerX = Math.max(half, Math.min(width - half, x));
-  const centerY = Math.max(boxHeight / 2 + 1, Math.min(height - boxHeight / 2 - 1, y));
-  context.beginPath();
-  context.roundRect(centerX - boxWidth / 2, centerY - boxHeight / 2, boxWidth, boxHeight, 4);
-  context.fillStyle = palette[type][0];
-  context.fill();
+  const centerY = Math.max(fontSize, Math.min(height - fontSize, y));
+  context.strokeStyle = palette[type][0];
+  context.lineJoin = 'round';
+  context.lineWidth = 3;
+  context.strokeText(word, centerX, centerY);
   context.fillStyle = palette[type][1];
-  context.fillText(word, centerX, centerY + 0.2);
+  context.fillText(word, centerX, centerY);
 }
 
 function coastPoint(context, x, y) {
@@ -163,26 +161,26 @@ function drawMap(canvas, context, paint) {
 export function mountWorldInquiry(host, _, saved, onChange) {
   const state = readSaved(saved);
   host.innerHTML = `<div class="inquiry-world-activity" data-world-activity>
-    <div class="world-ratio" data-world-ratio>
-      <div aria-hidden="true" style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px">
-        ${Array.from({ length: 10 }, (_, index) => `<span style="height:10px;border-radius:3px;background:${index < 7 ? '#387ea1' : '#bd9763'}"></span>`).join('')}
-      </div>
-      <p style="margin:5px 0 8px;font-size:.87rem"><strong>海洋约七成</strong> <span aria-hidden="true">·</span> 陆地约三成</p>
-    </div>
+    <p class="world-route-prompt" data-world-prompt></p>
     <figure class="inquiry-world">
       <canvas role="img" width="640" height="320"></canvas>
-      <figcaption style="display:flex;flex-wrap:wrap;gap:0 6px;align-items:center;justify-content:space-between">
-        <span>世界地图示意</span>
-        <button type="button" class="chip" data-world-labels aria-pressed="false">看七洲四洋</button>
-      </figcaption>
+      <figcaption>世界地图示意</figcaption>
     </figure>
-    <div class="inquiry-world-controls world-route-controls">
-      <div class="world-route-actions" style="display:flex;flex-wrap:wrap;gap:6px">
+    <div class="world-route-controls">
+      <div class="world-route-actions">
         <button type="button" class="button primary" data-world-reveal aria-pressed="false">画出路线</button>
         <button type="button" class="button" data-world-route="atlantic" hidden>换一条路线</button>
+        <button type="button" class="button" data-world-labels aria-pressed="false">标出七洲四洋</button>
       </div>
       <p role="status" data-world-feedback></p>
     </div>
+    <figure class="world-ratio" data-world-ratio>
+      <figcaption>地球表面的海陆比例</figcaption>
+      <div class="world-ratio-bar" aria-hidden="true"></div>
+      <div class="world-ratio-labels">
+        <span>海洋约 70%</span><span>陆地约 30%</span>
+      </div>
+    </figure>
   </div>`;
 
   const activity = host.querySelector('[data-world-activity]');
@@ -191,6 +189,7 @@ export function mountWorldInquiry(host, _, saved, onChange) {
   const names = host.querySelector('[data-world-labels]');
   const reveal = host.querySelector('[data-world-reveal]');
   const changeRoute = host.querySelector('[data-world-route]');
+  const prompt = host.querySelector('[data-world-prompt]');
   const feedback = host.querySelector('[data-world-feedback]');
 
   function draw() {
@@ -223,12 +222,11 @@ export function mountWorldInquiry(host, _, saved, onChange) {
 
   function update() {
     const route = routes[state.route];
-    const question = state.revealed ? route.answer : route.question;
     activity.dataset.worldActiveRoute = state.route;
     activity.dataset.worldRevealed = String(state.revealed);
     activity.dataset.worldAllLabels = String(state.labels);
     names.setAttribute('aria-pressed', String(state.labels));
-    names.textContent = state.labels ? '回看路线' : '看七洲四洋';
+    names.textContent = state.labels ? '返回航线图' : '标出七洲四洋';
     reveal.setAttribute('aria-pressed', String(state.revealed));
     reveal.textContent = state.revealed ? '收起路线' : '画出路线';
     reveal.classList.toggle('primary', !state.revealed);
@@ -237,7 +235,8 @@ export function mountWorldInquiry(host, _, saved, onChange) {
     changeRoute.dataset.worldRoute = state.route === 'pacific' ? 'atlantic' : 'pacific';
     changeRoute.textContent = state.route === 'pacific' ? '换一条路线' : '回到第一条';
     changeRoute.classList.toggle('primary', state.revealed && state.route === 'pacific');
-    feedback.textContent = state.labels ? '在图上找一找，哪两个大洲连在同一片陆地上？' : question;
+    prompt.textContent = state.labels ? '看看大洲和大洋在图上怎么分布。' : route.question;
+    feedback.textContent = !state.labels && state.revealed ? route.answer : '';
     canvas.setAttribute('aria-label', state.labels
       ? '世界地图。七个大洲和本册四个大洋：' + geography.map(([name]) => name).join('、')
       : `世界地图示意。从${route.startName}到${route.endName}。${state.revealed ? route.answer : ''}`);

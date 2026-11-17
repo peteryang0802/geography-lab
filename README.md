@@ -14,14 +14,14 @@
 
 在仓库运行 `python3 -m http.server 8773 --bind 127.0.0.1`，打开 `http://127.0.0.1:8773/`。网页无需构建。GitHub Pages 从 `main` 根目录发布。
 
-使用 Node 和 Playwright 运行 `GEOLAB_ROUND=1 node tests/inquiry-browser.cjs`，分别把轮次设为 1、2、3，检查 360×640、390×844、667×335。每轮遍历三版全册，并实操积水、图例、地球仪、相册、旧知识卡、复习和弱网重试。通过 `GEOLAB_URL` 指定另一个静态站点。设置 `GEOLAB_SCREENSHOTS` 保存固定视口截图，配合 `GEOLAB_CAPTURE_ONLY=1` 可以单独截取画面。评审只看截图，交互结果以浏览器实测为准。孩子的兴趣与现实观察另行试用。
+使用 Node 和 Playwright 运行 `GEOLAB_ROUND=1 node tests/inquiry-browser.cjs`，分别把轮次设为 1、2、3，检查 360×640、390×844、667×335。每轮遍历三版全册，实操每课的主图与课末对照，检查画面变化、同屏反馈、原页路径、进度恢复和教材顺序。另测 Three.js、相册、旧知识卡、复习和弱网重试。通过 `GEOLAB_URL` 指定预览。设置 `GEOLAB_SCREENSHOTS` 保存固定视口截图，配合 `GEOLAB_CAPTURE_ONLY=1` 可以单独截取画面。
 
 用 `node tests/performance-browser.cjs` 检查冷缓存弱网的图片、平面图、3D 首帧和超时重试。测线上压缩传输时将 `GEOLAB_URL` 指向 GitHub Pages。
 
 ## 维护课程
 
 - 教材顺序和稳定 ID 来自 `src/textbook.js`，教材条目、已有知识点和练习来自 `src/content-first.js` 与 `src/content-later.js`。
-- `src/inquiries.js` 为每课维护现实问题、回想提示、站内课文、图上比较和课外观察。
+- `src/inquiries.js` 为每课维护现实问题、图后说明、第二个情境和课外观察。`src/transfer-illustrations.js` 为第二个情境绘制前后两幅教学示意，说明数字和事实仍保留在可读文字中。
 - `src/lesson-activities.js` 维护课内活动与初始实验模式。二维、Three.js 共用 `src/geo-model.js` 中的地理模型。
 - 修改 `src/scenes.js` 或升级 Three.js 后，运行 `sh scripts/build-three.sh` 更新随站发布的 `src/three-runtime.js`。平面图默认可操作，Three.js 在打开 3D 时加载。
 - 每课用能观察的现象开始，在原页看图、动手和解释。跨课浏览与额外练习集中在复习区。新增内容先核对教材页段，再用同一张原图验证读数、尺度和标签。

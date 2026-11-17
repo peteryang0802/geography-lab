@@ -1,4 +1,4 @@
-import { inquiries } from './inquiries.js?v=5';
+import { inquiries } from './inquiries.js?v=6';
 
 const visual = kind => ({ kind });
 const lab = (id, mode) => ({ kind: 'lab', id, mode });
@@ -33,42 +33,54 @@ export const lessonActivities = {
   'project-made-in-china': [visual('evidence')],
 };
 
+for (const [id, list] of Object.entries(lessonActivities)) {
+  const transfer = inquiries[id].transfer;
+  if (transfer) list.push({ kind: 'transfer', title: transfer.title, placement: 'transfer' });
+}
+
 export const activityKey = (lessonId, activity) => [lessonId, activity.kind, activity.id].filter(Boolean).join('-');
 export const activityIds = Object.entries(lessonActivities).flatMap(([lessonId, list]) =>
   list.map(activity => activityKey(lessonId, activity)));
 
 const visualLoaders = {
-  opening: async () => (await import('./lesson-visuals.js')).mountOpeningVisual,
-  evidence: async () => (await import('./evidence-activities.js')).mountEvidenceActivity,
+  opening: async () => (await import('./lesson-visuals.js?v=6')).mountOpeningVisual,
+  evidence: async () => (await import('./evidence-activities.js?v=6')).mountEvidenceActivity,
   legend: async () => {
-    const { mountLegendInquiry } = await import('./inquiry-visuals.js');
+    const { mountLegendInquiry } = await import('./inquiry-visuals.js?v=6');
     return (host, _, saved, onChange) => mountLegendInquiry(host, saved, onChange);
   },
   rain: async () => {
-    const { mountRainInquiry } = await import('./inquiry-visuals.js');
+    const { mountRainInquiry } = await import('./inquiry-visuals.js?v=6');
     return (host, _, saved, onChange, view) => mountRainInquiry(host, saved, onChange, { view: ({ recall: 'a', nearby: 'b', fieldwork: 'c' })[view] });
   },
-  world: async () => (await import('./world-inquiry.js?v=5')).mountWorldInquiry,
+  world: async () => (await import('./world-inquiry.js?v=6')).mountWorldInquiry,
   'world-check': async () => {
-    const { mountWorldCheck } = await import('./world-inquiry.js?v=5');
+    const { mountWorldCheck } = await import('./world-inquiry.js?v=6');
     return (host, lessonId, saved, onChange) => mountWorldCheck(host, inquiries[lessonId].outside, saved, onChange);
   },
   landform: async () => {
-    const { mountLandformInquiry } = await import('./landform-inquiry.js');
+    const { mountLandformInquiry } = await import('./landform-inquiry.js?v=6');
     return (host, _, saved, onChange) => mountLandformInquiry(host, saved, onChange);
   },
   seafloor: async () => {
-    const { mountSeafloorInquiry } = await import('./seafloor-inquiry.js');
+    const { mountSeafloorInquiry } = await import('./seafloor-inquiry.js?v=6');
     return (host, _, saved, onChange) => mountSeafloorInquiry(host, saved, onChange);
   },
   direction: async () => {
-    const { mountMapDirection } = await import('./map-direction.js?v=2');
+    const { mountMapDirection } = await import('./map-direction.js?v=6');
     return (host, _, saved, onChange) => mountMapDirection(host, saved, onChange);
   },
-  chart: async () => (await import('./widgets.js?v=2')).mountWidget,
+  chart: async () => {
+    const { mountWidget } = await import('./widgets.js?v=6');
+    return (host, kind, saved, onChange, _view, lessonId) => mountWidget(host, kind, saved, onChange, lessonId);
+  },
+  transfer: async () => {
+    const { mountLessonTransfer } = await import('./lesson-transfer.js?v=6');
+    return (host, lessonId, saved, onChange) => mountLessonTransfer(host, lessonId, inquiries[lessonId].transfer, saved, onChange);
+  },
 };
 
 export async function mountLessonVisual(host, activity, lessonId, saved, onChange, view, isActive) {
   const mount = await visualLoaders[activity.kind]();
-  if (isActive()) return mount(host, activity.id ?? lessonId, saved, onChange, view);
+  if (isActive()) return mount(host, activity.id ?? lessonId, saved, onChange, view, lessonId);
 }

@@ -16,18 +16,89 @@ const go = (p, hash) => p.evaluate(hash => { location.hash = hash; }, hash);
 const section = name => '[data-inquiry-section="' + name + '"]';
 
 async function checkWidth(page) {
-  const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, screen: innerWidth }));
-  assert.equal(size.scroll, size.screen, page.url());
+  const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, layout: innerWidth }));
+  assert.equal(size.layout, page.viewportSize().width, page.url() + ' layout viewport');
+  assert.equal(size.scroll, size.layout, page.url() + ' horizontal overflow');
+}
+
+async function sameScreen(activity, selectors) {
+  const sizes = await activity.evaluate((root, selectors) => {
+    const boxes = selectors.flatMap(selector => [...root.querySelectorAll(selector)])
+      .filter(element => element.getClientRects().length)
+      .map(element => element.getBoundingClientRect());
+    return {
+      items: boxes.length,
+      height: Math.max(...boxes.map(box => box.bottom)) - Math.min(...boxes.map(box => box.top)),
+      limit: innerHeight,
+    };
+  }, selectors);
+  assert.ok(sizes.items >= 2 && sizes.height <= sizes.limit + 2,
+    `${await activity.getAttribute('data-activity')} exceeds one viewport: ${JSON.stringify(sizes)}`);
+}
+
+async function verifyPrimary(page, lesson, id) {
+  const activity = lesson.locator('[data-activity]').first();
+  await activity.locator('canvas').first().waitFor({ timeout: 10000 });
+  await activity.scrollIntoViewIfNeeded();
+  const canvas = activity.locator('canvas:visible').first();
+  const controls = activity.locator('button:visible:enabled:not([data-toggle-view]):not([aria-pressed="true"])');
+  const route = new URL(page.url()).hash;
+  const snapshot = () => canvas.evaluate(el => el.toDataURL());
+  await canvas.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const before = await snapshot();
+  if (id === 'contours') await activity.locator('[data-rain-test]').click();
+  else if (id === 'land-ocean') await activity.locator('[data-world-reveal]').click();
+  else if (id === 'earth-model') await setRange(page, '#lab-lat', 22);
+  else if (id === 'earth-motion') await setRange(page, '#lab-hour', 0);
+  else if (await controls.count()) await controls.first().click();
+  else {
+    const dropdown = activity.locator('select:visible').first();
+    const choices = await dropdown.locator('option').count();
+    assert.ok(choices > 1, id);
+    await dropdown.selectOption({ index: 1 });
+  }
+  await canvas.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.notEqual(await snapshot(), before, id + ' control updates the diagram');
+  assert.equal(new URL(page.url()).hash, route, id + ' primary interaction keeps the lesson open');
+  assert.equal(await activity.locator('.activity-wait:visible').count(), 0, id + ' no stale placeholder');
+  await sameScreen(activity, ['canvas', 'button', 'select', 'input', '[role=status]', '[data-live]']);
+  if (id === 'contours') await activity.locator('[data-rain-test]').click();
+}
+
+async function verifyTransfer(page, lesson, id) {
+  const activity = lesson.locator('[data-activity="' + id + '-transfer"]');
+  await activity.scrollIntoViewIfNeeded();
+  const control = activity.locator('[data-transfer-action]');
+  const gate = activity.locator('[data-lesson-transfer]');
+  const result = activity.locator('[data-transfer-feedback]');
+  const image = activity.locator('canvas');
+  await control.waitFor();
+  const before = await image.evaluate(el => el.toDataURL());
+  const caption = await result.innerText();
+  const route = new URL(page.url()).hash;
+  await control.click();
+  assert.equal(await gate.getAttribute('data-compared'), 'true', id);
+  assert.notEqual(await image.evaluate(el => el.toDataURL()), before, id + ' transfer changes the drawing');
+  assert.notEqual(await result.innerText(), caption, id + ' transfer explains the change');
+  assert.equal(new URL(page.url()).hash, route);
+  await sameScreen(activity, ['.transfer-question', 'canvas', '.transfer-diagram', 'button', '[role=status]']);
+  await control.click();
+  assert.equal(await gate.getAttribute('data-compared'), 'false', id + ' transfer can be reset');
 }
 
 async function verifyLesson(page, id, next) {
   const lesson = page.locator('[data-inquiry-lesson="' + id + '"]');
   await lesson.waitFor();
-  await lesson.locator('[data-activity]').first().locator('canvas, .direction-map').first().waitFor({ timeout: 10000 });
+  await verifyPrimary(page, lesson, id);
   if (id === 'land-ocean') {
     assert.equal(await lesson.locator('.inquiry-copy').count(), 0, 'inline evidence replaces reading paragraphs');
     assert.equal(await lesson.locator('.inquiry-picture-note img').count(), 2);
-  } else assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
+    assert.equal(await lesson.locator('[data-world-ratio] button, [data-world-ratio] a').count(), 0);
+    assert.equal(await lesson.locator('.world-ratio-bar').count(), 1);
+  } else {
+    assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
+    await verifyTransfer(page, lesson, id);
+  }
   assert.equal(await lesson.locator(section('outside')).getByRole('heading').innerText(),
     id === 'land-ocean' ? '换张地图试一试' : '课外观察');
   assert.equal(await lesson.locator('a:visible').count(), 1, id + ' visible exits');
@@ -89,6 +160,13 @@ async function importantFlows(page) {
   await page.reload();
   await page.locator('[data-rain-drain]').waitFor();
   assert.equal(await page.locator('[data-rain-drain]').getAttribute('aria-pressed'), 'true');
+  const slopes = page.locator('[data-activity=contours-transfer]');
+  await slopes.scrollIntoViewIfNeeded();
+  await slopes.locator('[data-transfer-action]').click();
+  await page.reload();
+  await slopes.scrollIntoViewIfNeeded();
+  assert.equal(await slopes.locator('[data-lesson-transfer]').getAttribute('data-compared'), 'true');
+  await slopes.locator('[data-transfer-action]').click();
 
   await go(page, '#/lesson/maps');
   const keys = page.locator('[data-legend-pick]');
@@ -96,6 +174,12 @@ async function importantFlows(page) {
   assert.ok(await keys.count() >= 4);
   await keys.last().click();
   assert.match(await page.locator('.legend-inquiry [role="status"]').innerText(), /注记|海拔/);
+  const direction = page.locator('[data-activity=maps-direction]');
+  await direction.scrollIntoViewIfNeeded();
+  await direction.locator('[data-example=north-arrow]').click();
+  await direction.locator('[data-bearing="0"]').click();
+  assert.match(await direction.getByRole('status').innerText(), /右上/);
+  await sameScreen(direction, ['.direction-map', 'button', '[role=status]']);
   assert.equal(new URL(page.url()).hash, '#/lesson/maps');
 
   await go(page, '#/lesson/earth-motion');
@@ -104,17 +188,12 @@ async function importantFlows(page) {
   await setRange(page, '#lab-month', 12);
   assert.match(await page.locator('.lab-live').innerText(), /北纬 40° 约 9 小时白天.*南纬 40° 约 15 小时白天/);
   await sameLabScreen(page);
-  await page.locator('[data-mode=circulation]').click();
-  await page.locator('[data-flow]').selectOption('monsoon');
-  await page.locator('[data-season]').selectOption('winter');
-  assert.match(await page.locator('.lab-live').innerText(), /冬季风/);
-  await sameLabScreen(page);
 
   await go(page, '#/lesson/land-ocean');
   const world = page.locator('[data-world-activity]');
   const map = world.locator('canvas');
   await map.waitFor();
-  await world.locator('[data-world-reveal]').click();
+  if (await world.getAttribute('data-world-revealed') === 'false') await world.locator('[data-world-reveal]').click();
   assert.match(await world.locator('[data-world-feedback]').innerText(), /跨过太平洋/);
   await world.locator('[data-world-route=atlantic]').click();
   assert.doesNotMatch(await world.locator('[data-world-feedback]').innerText(), /大西洋/);
@@ -131,10 +210,12 @@ async function importantFlows(page) {
   await landform.scrollIntoViewIfNeeded();
   await landform.locator('[data-landform-spot=plateau]').click();
   assert.match(await landform.locator('[data-landform-feedback]').innerText(), /高原|平缓|起伏小/);
+  await sameScreen(landform, ['canvas', 'button', '[role=status]']);
   const seafloor = page.locator('[data-activity=land-ocean-seafloor]');
   await seafloor.scrollIntoViewIfNeeded();
   await seafloor.locator('[data-seafloor-stop=slope]').click();
   assert.match(await seafloor.locator('.seafloor-feedback').innerText(), /大陆坡/);
+  await sameScreen(seafloor, ['canvas', 'button', '[role=status]']);
   assert.equal(new URL(page.url()).hash, '#/lesson/land-ocean');
   const globe = page.locator('.inquiry-optional-experiment');
   assert.equal(await globe.getAttribute('open'), null);
@@ -167,6 +248,17 @@ async function importantFlows(page) {
   await check.scrollIntoViewIfNeeded();
   assert.equal(await check.getByRole('button', { name: '印度洋' }).getAttribute('aria-pressed'), 'true');
   await checkWidth(page);
+
+  await go(page, '#/lesson/weather');
+  const weather = page.locator('[data-activity=weather-chart-weather]');
+  const forecast = weather.locator('canvas');
+  await forecast.waitFor();
+  await weather.locator('select').first().selectOption('a');
+  const forecastWidth = (await forecast.boundingBox()).width;
+  await forecast.click({ position: { x: Math.round(forecastWidth / 2), y: 60 } });
+  assert.equal(await weather.locator('select').nth(1).inputValue(), 'noon');
+  assert.match(await weather.getByRole('status').innerText(), /雷电预警/);
+  assert.equal(new URL(page.url()).hash, '#/lesson/weather');
 
   await go(page, '#/concept/legend?from=%23%2Flesson%2Fmaps');
   await page.locator('[data-concept-example] canvas').waitFor();

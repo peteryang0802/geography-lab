@@ -2,12 +2,12 @@ import { lessons, projects, legendItems, concepts, getRelations, labs, bookPageU
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js?v=5';
 import { mountPhotoGallery } from './photo-gallery.js?v=5';
-import { mountMapDirection } from './map-direction.js?v=2';
+import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { createLearningStore } from './learning-state.js?v=3';
-import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=5';
-import { inquiries } from './inquiries.js?v=5';
-import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=5';
+import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=6';
+import { inquiries } from './inquiries.js?v=6';
+import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=6';
 import { fitActivityStage } from './activity-stage.js';
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=5';
 
@@ -173,7 +173,7 @@ function activityMarkup(lesson, activities) {
     const gallery = activity.kind === 'lab' && activity.id === 'globe'
       ? '<section class="inline-mountain" data-inline-mountain hidden aria-label="山地照片"><h3 tabindex="-1" data-mountain-heading></h3><div class="photo-gallery" data-inline-photos></div></section>'
       : '';
-    if (activity.placement === 'outside') return `<section class="inquiry-outside" data-inquiry-section="outside">
+    if (activity.placement) return `<section class="inquiry-outside" data-inquiry-section="${activity.placement}">
       <h2>${escape(activity.title)}</h2>${host}</section>`;
     if (index === 0) return host + gallery;
     if (activity.collapsible) return `<details class="inquiry-extra-activity inquiry-optional-experiment"
@@ -208,7 +208,8 @@ function showLesson(lesson, storedView) {
   const activities = lessonActivities[lesson.id];
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
-    activityMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement !== 'outside')),
+    activityMarkup: activityMarkup(lesson, activities.filter(activity => !activity.placement)),
+    transferMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'transfer')),
     outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
     footer: lessonNavigation(position), note: lessonNote(lesson, data),
   });
@@ -295,8 +296,9 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
       const saved = learning.getView(route)?.labState ?? state.labs[stateKey] ?? legacyEntry;
       const section = host.nextElementSibling;
       const mountain = section?.matches('[data-inline-mountain]') ? inlineMountainGallery(section, route) : null;
+      const fixedMode = ['earth-model', 'earth-motion'].includes(lesson.id) ? activity.mode : undefined;
       const runner = await mountLearningLab(host, byLab.get(activity.id), params, saved, stateKey,
-        { inline: true, origin: route, onTopic: id => mountain?.open(id, true) }, isActive);
+        { inline: true, fixedMode, origin: route, onTopic: id => mountain?.open(id, true) }, isActive);
       if (!runner) return;
       if (mountain) {
         const alreadyOpen = learning.getView(route)?.mountain;
@@ -324,7 +326,7 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
 
 async function mountLearningLab(host, lab, params, saved, key, options, isActive) {
   const route = activeHash;
-  const { mountLabUI } = await import('./lab-ui.js?v=5');
+  const { mountLabUI } = await import('./lab-ui.js?v=6');
   if (!isActive()) return;
   let mounted = false;
   const dispose = mountLabUI(host, lab, params, saved, settings => {

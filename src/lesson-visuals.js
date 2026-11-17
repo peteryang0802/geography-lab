@@ -3,20 +3,24 @@ const height = 310;
 
 const activities = {
   intro: {
-    caption: '同一场雨之后的上学路。浅蓝色水面表示路边的积水。',
-    hint: '想象你正背着书包出门。先点坡脚和坡顶，看看哪一处还有积水。',
+    caption: '同一场雨后的上学路。蓝色水面表示积水。',
+    hint: '点图上的坡脚或坡顶，也可以用按钮。看过两处，再比路线。',
+    groups: [
+      { label: '先看哪里留水', choices: ['foot', 'top'] },
+      { label: '再选上学路线', choices: ['a', 'b'] },
+    ],
     choices: {
       foot: ['看坡脚', '坡脚这一处还看得到水洼。雨水顺坡往下流，低洼处更容易存水。'],
       top: ['看坡顶', '这处坡顶没有明显的积水。再点一次坡脚，对照同一场雨留下的痕迹。'],
       a: ['看路线 A', '路线 A 较短，会经过积水的坡脚。'],
-      b: ['看路线 B', '路线 B 绕过图里的水洼，要多走约两分钟。雨后你会走哪一条？'],
+      b: ['看路线 B', '路线 B 多走约两分钟，却能绕开水洼。换回路线 A，就能对比两条路。'],
     },
     hotspots: { foot: [287, 204], top: [332, 87] },
     draw: drawRoute,
   },
   'earth-space': {
     caption: '只画出了离太阳最近的三颗行星。大小和间距都经过了简化。',
-    hint: '从太阳出发，向右数这三颗行星。你觉得哪颗是我们的地球？',
+    hint: '从太阳向右数。点一颗行星或它的序号按钮，查查它叫什么。',
     choices: {
       mercury: ['第 1 颗', '这是水星，离太阳最近。沿图再往右找。'],
       venus: ['第 2 颗', '这是金星。从太阳出发，再数一颗就到地球了。'],
@@ -27,7 +31,7 @@ const activities = {
   },
   spaceflight: {
     caption: '教学示意图。前后两张图画的是同一处河湾。',
-    hint: '先找桥和村子，再切到洪水之后，看看水有没有漫过原来的河岸。',
+    hint: '找到桥和村子，再选「洪水后」。用同一座桥看水面变了多少。',
     initialChoice: 'before',
     choices: {
       before: ['洪水前', '洪水前，河水沿窄窄的河道流动，桥北面的平地还露在外面。'],
@@ -47,17 +51,24 @@ export function mountOpeningVisual(host, id, saved, onChange) {
 
   const activity = activities[id];
   let choice = Object.hasOwn(activity.choices, saved?.choice) ? saved.choice : null;
+  const option = key => `<button type="button" class="chip" data-opening-choice="${key}" aria-pressed="false">${activity.choices[key][0]}</button>`;
   host.innerHTML = `
-    <figure class="opening-figure">
-      <canvas role="img" aria-label="${activity.caption}" width="${width}" height="${height}" style="display:block;width:100%;height:auto;aspect-ratio:${width}/${height}"></canvas>
-      <figcaption>${activity.caption}</figcaption>
-    </figure>
-    <div class="opening-controls mini-actions">
-      ${Object.entries(activity.choices).map(([key, [label]]) => `
-        <button type="button" class="chip" data-opening-choice="${key}" aria-pressed="false">${label}</button>
-      `).join('')}
-    </div>
-    <p class="opening-feedback" role="status"></p>`;
+    <div class="opening-activity">
+      <figure class="opening-figure">
+        <canvas role="img" aria-label="${activity.caption}" width="${width}" height="${height}" style="display:block;width:100%;height:auto;aspect-ratio:${width}/${height}"></canvas>
+        <figcaption>${activity.caption}</figcaption>
+      </figure>
+      <div class="opening-dock">
+        <div class="opening-controls">
+          ${activity.groups
+            ? activity.groups.map(({ label, choices }) => `<div class="opening-choice-group" role="group" aria-label="${label}">
+                <p class="opening-choice-label">${label}</p><div class="opening-choice-buttons">${choices.map(option).join('')}</div>
+              </div>`).join('')
+            : Object.keys(activity.choices).map(option).join('')}
+        </div>
+        <p class="opening-feedback" role="status"></p>
+      </div>
+    </div>`;
 
   const canvas = host.querySelector('canvas');
   const context = canvas.getContext('2d');
@@ -103,12 +114,16 @@ export function mountOpeningVisual(host, id, saved, onChange) {
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) * width / rect.width;
     const y = (event.clientY - rect.top) * height / rect.height;
-    const target = Object.entries(activity.hotspots).find(([, [px, py]]) => Math.hypot(px - x, py - y) < 48);
+    const radius = Math.max(48, 22 * width / rect.width);
+    const target = Object.entries(activity.hotspots).find(([, [px, py]]) => Math.hypot(px - x, py - y) < radius);
     if (target) select(target[0]);
   }
 
   controls.addEventListener('click', onControlClick);
-  if (activity.hotspots) canvas.addEventListener('click', onFigureClick);
+  if (activity.hotspots) {
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', onFigureClick);
+  }
   const resize = new ResizeObserver(draw);
   resize.observe(canvas);
   refresh();
@@ -308,5 +323,12 @@ function drawFlood(ctx, choice) {
   label(ctx, '北', 567, 40, '#294a3b', 22);
   line(ctx, [[567, 91], [567, 56]], '#294a3b', 3);
   line(ctx, [[558, 66], [567, 56], [576, 66]], '#294a3b', 3);
-  if (choice === 'overlay') label(ctx, '新增淹没区', 340, 76, '#163f54', 22);
+  if (choice === 'overlay') {
+    label(ctx, '新增淹没区', 340, 76, '#163f54', 22);
+    ctx.beginPath();
+    ctx.arc(363, 162, 22, 0, Math.PI * 2);
+    ctx.strokeStyle = '#8d4e24';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
 }

@@ -90,22 +90,20 @@ function ellipse(ctx, x, y, radiusX, radiusY, color) {
   ctx.fill();
 }
 
-function label(ctx, value, x, y, { color = ink, size = 23, align = 'center' } = {}) {
+function label(ctx, value, x, y, { color = ink, size = 23, align = 'center', halo = false } = {}) {
+  ctx.save();
   ctx.font = `700 ${size}px system-ui, sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
+  if (halo) {
+    ctx.strokeStyle = paper;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(value, x, y);
+  }
   ctx.fillStyle = color;
   ctx.fillText(value, x, y);
-}
-
-function pill(ctx, value, x, y, { active = false, size = 23, color = ink } = {}) {
-  ctx.font = `700 ${size}px system-ui, sans-serif`;
-  const textWidth = ctx.measureText(value).width;
-  ctx.beginPath();
-  ctx.roundRect(x - (textWidth + 23) / 2, y - (size + 13) / 2, textWidth + 23, size + 13, 7);
-  ctx.fillStyle = active ? '#f5cc80' : paper;
-  ctx.fill();
-  label(ctx, value, x, y + 1, { size, color });
+  ctx.restore();
 }
 
 function trees(ctx, positions) {
@@ -141,12 +139,12 @@ function drawLegend(ctx, selected) {
   stroke(ctx, [[327, 123], [380, 133]], ink, 3);
   stroke(ctx, [[325, 138], [378, 148]], ink, 3);
   stroke(ctx, [[376, 148], [397, 174]], green, 2);
-  pill(ctx, '小石桥', 454, 176, { active: selected === 'name' });
+  label(ctx, '小石桥', 454, 176, { halo: true, color: selected === 'name' ? '#8b451c' : ink });
   ellipse(ctx, 203, 103, 7, 7, ink);
   stroke(ctx, [[203, 100], [208, 81]], green, 2);
-  pill(ctx, '观景台 128 米', 209, 69, { active: selected === 'elevation' });
+  label(ctx, '观景台 128 米', 209, 69, { halo: true, color: selected === 'elevation' ? '#8b451c' : ink });
   ellipse(ctx, 62, 265, 6, 6, ink);
-  pill(ctx, '入口', 51, 234, { size: 22 });
+  label(ctx, '入口', 51, 234, { size: 22, halo: true });
   compass(ctx, 552, 34);
 }
 
@@ -159,7 +157,7 @@ export function mountLegendInquiry(host, saved = {}, onChange = () => {}) {
         <figcaption><strong>松溪公园地图</strong> <small>教学示意</small></figcaption>
         <canvas role="img"></canvas>
       </figure>
-      <div class="inquiry-key" aria-label="地图图例">
+      <div class="inquiry-key">
         <strong>图例</strong>
         <span data-legend-key="river"><b aria-hidden="true" style="color:#4987a0">━</b> 小河</span>
         <span data-legend-key="path"><b aria-hidden="true" style="color:#9f552e">┄</b> 步道</span>
@@ -179,10 +177,7 @@ export function mountLegendInquiry(host, saved = {}, onChange = () => {}) {
     for (const button of controls.querySelectorAll('button')) {
       button.setAttribute('aria-pressed', String(button.dataset.legendPick === selected));
     }
-    for (const key of host.querySelectorAll('[data-legend-key]')) {
-      key.toggleAttribute('data-active', key.dataset.legendKey === selected);
-    }
-    feedback.textContent = legendItems[selected]?.feedback || '点一处图上的线、桥或文字，看看它告诉你什么。';
+    feedback.textContent = legendItems[selected]?.feedback || '先读图例，再点地图或用按钮指认一处。';
     drawing.paint();
   }
 
@@ -256,12 +251,15 @@ function drawRain(ctx, { prediction, showRain, showDrain }) {
   if (showRain && showDrain) {
     stroke(ctx, [[429, 157], [475, 177], [523, 177]], '#1c4c74', 5, [8, 6]);
     stroke(ctx, [[509, 169], [523, 177], [509, 184]], '#1c4c74', 4);
-    pill(ctx, '排水口', 535, 145, { size: 20 });
     label(ctx, '原水迹', 398, 191, { color: '#18486b', size: 19 });
   }
-  pill(ctx, '俯视图', 71, 30, { size: 23 });
-  pill(ctx, showRain ? '雨停 10 分钟' : '同一条上学路', 326, 30, { size: 23 });
-  if (showRain) pill(ctx, showDrain ? '排水口开' : '排水口关', 513, 43, { size: 23, color: '#154e74' });
+  if (showRain) {
+    ellipse(ctx, 523, 177, 5, 5, '#244f61');
+    stroke(ctx, [[523, 171], [541, 151]], '#244f61', 2);
+    label(ctx, '排水口', 545, 140, { size: 20, halo: true });
+  }
+  label(ctx, '俯视图', 71, 30);
+  label(ctx, showRain ? '雨停 10 分钟' : '同一条上学路', 326, 30);
 
   ctx.fillStyle = '#f2e9d3';
   ctx.fillRect(0, 202, width, rainHeight - 202);
@@ -279,20 +277,21 @@ function drawRain(ctx, { prediction, showRain, showDrain }) {
     stroke(ctx, [[406, 336], [419, 351], [528, 358]], '#3d6370', 5);
     stroke(ctx, [[507, 350], [528, 358], [512, 367]], '#3d6370', 3);
   }
-  pill(ctx, '侧面图', 71, 227, { size: 23 });
+  label(ctx, '侧面图', 71, 227);
   for (const [id, [x, y]] of Object.entries(rainSpots)) {
     const selected = prediction === id;
     if (id === 'low' && showRain) {
       stroke(ctx, [[x, y - 27], [x, y - 43]], ink, 2.5);
-      pill(ctx, 'B 低洼处', x, y - 55, { active: selected });
     } else {
       ellipse(ctx, x, y, selected ? 12 : 8, selected ? 12 : 8, selected ? '#91481f' : ink);
       ellipse(ctx, x, y, 4, 4, paper);
-      pill(ctx, id === 'high' ? 'A 坡上' : 'B 低洼处', x + 1, y - 33, { active: selected });
     }
+    const textY = y - (id === 'low' && showRain ? 55 : 33);
+    const textColor = selected ? '#8b451c' : ink;
+    label(ctx, id === 'high' ? 'A 坡上' : 'B 低洼处', x, textY, { color: textColor, halo: true });
     const baseY = id === 'high' ? 252 : 337;
     const sideLabel = id === 'high' ? 'A' : 'B';
-    pill(ctx, sideLabel, x, baseY - 27, { active: selected, size: 22 });
+    label(ctx, sideLabel, x, baseY - 27, { color: textColor, size: 22, halo: true });
     if (id === 'high' || !showRain) ellipse(ctx, x, baseY, 5, 5, ink);
   }
 }
@@ -338,14 +337,14 @@ export function mountRainInquiry(host, saved = {}, onChange = () => {}, { view }
     drainButton.setAttribute('aria-pressed', String(state.showDrain));
     drainButton.textContent = state.showDrain ? '关闭排水口' : '打开排水口';
     if (state.showDrain) {
-      feedback.textContent = 'B 的水洼变小了。地势、雨量和观察时间都一样，这次只改变了排水口。';
+      feedback.textContent = '排水口打开后，B 的水洼变小了。地势、雨量和观察时间都一样。';
     } else if (state.showRain) {
-      feedback.textContent = '雨停 10 分钟，A 没有明显积水，B 留下了水洼。再打开 B 的排水口，看看会有什么变化。';
+      feedback.textContent = '雨停 10 分钟，A 没有明显积水，B 留下了水洼。打开 B 的排水口，看看水往哪儿走。';
     } else if (state.prediction) {
       feedback.textContent = state.prediction === 'unsure' ? '可以先不猜。点“看雨后”，比较 A 和 B。'
         : `你选了 ${predictions[state.prediction]}。点“看雨后”，检查你看到的线索。`;
     } else {
-      feedback.textContent = '雨刚停，A 和 B 哪处还会有水洼？可以先选一个，也可以直接看雨后。';
+      feedback.textContent = '可以点图上 A 或 B 猜积水位置，也可以直接看雨后。';
     }
     drawing.paint();
   }
@@ -366,7 +365,11 @@ export function mountRainInquiry(host, saved = {}, onChange = () => {}, { view }
 
   function onMapClick(event) {
     const [x, y] = pointOf(event, drawing.canvas, rainHeight);
-    const target = Object.entries(rainSpots).find(([, [px, py]]) => Math.hypot(px - x, py - y) < 45);
+    const radius = Math.max(45, 22 * width / drawing.canvas.getBoundingClientRect().width);
+    const target = Object.entries(rainSpots).find(([id, [px, py]]) => {
+      const labelY = py - (id === 'low' && state.showRain ? 55 : 33);
+      return Math.hypot(px - x, py - y) < radius || Math.hypot(px - x, labelY - y) < radius;
+    });
     if (target) change({ prediction: target[0] });
   }
 
