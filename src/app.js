@@ -1,16 +1,19 @@
 import { lessons, projects, legendItems, concepts, getRelations, labs, bookPageUrl } from './catalog.js';
-import { mountLabUI } from './lab-ui.js?v=2';
-import { mountWidget } from './widgets.js?v=2';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js';
-import { mountPhotoGallery } from './photo-gallery.js';
+import { mountPhotoGallery } from './photo-gallery.js?v=3';
 import { mountMapDirection } from './map-direction.js?v=2';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
-import { createLearningStore } from './learning-state.js';
-import { hasOpeningVisual, mountOpeningVisual } from './lesson-visuals.js';
-import { hasEvidenceActivity, mountEvidenceActivity } from './evidence-activities.js';
+import { createLearningStore } from './learning-state.js?v=3';
+import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js';
+import { inquiries } from './inquiries.js';
+import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js';
+import { fitActivityStage } from './activity-stage.js';
 
 const main = document.querySelector('#content');
+const viewId = selectInquiryView(location.search);
+const inquiryView = inquiryViews[viewId];
+document.documentElement.dataset.inquiryView = viewId;
 const notice = document.querySelector('#announcement');
 const work = [...lessons, ...projects];
 const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
@@ -20,16 +23,15 @@ const exploreState = { query: '', showAll: false };
 let activeHash = '';
 let cleanup;
 let storeTimer;
+let renderVersion = 0;
 const learning = createLearningStore({
-  lessons: work, concepts, labs,
+  lessons: work, concepts, labs, activityIds, namespace: viewId === 'recall' ? '' : viewId,
   onStorageError: () => {
     notice.textContent = '当前浏览器无法长期保存进度，请在复习页导出。';
   },
 });
 const { state } = learning;
 
-const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 const lessonUrl = id => '#/lesson/' + encodeURIComponent(id);
 const conceptUrl = (id, origin) => '#/concept/' + encodeURIComponent(id) + (origin ? '?from=' + encodeURIComponent(origin) : '');
 const labUrl = (id, query = {}) => '#/lab/' + encodeURIComponent(id) + (Object.keys(query).length ? '?' + new URLSearchParams(query) : '');
@@ -37,8 +39,6 @@ if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
 const arrow = '<span aria-hidden="true">→</span>';
 const doneCount = lesson => lesson.tasks.filter(task => state.answers[task.id]?.solved === true).length;
-const isDone = lesson => lesson.tasks.length > 0 && doneCount(lesson) === lesson.tasks.length;
-const hasCompleted = lesson => Boolean(state.completed[lesson.id]) || isDone(lesson);
 const sectionHeading = (title, text = '', extra = '') => '<div class="section-title"><div><h2>' + title + '</h2>' + (text ? '<p>' + text + '</p>' : '') + '</div>' + extra + '</div>';
 
 function breadcrumb(title, from = '#/textbook', fromLabel = '课本目录') {
@@ -58,31 +58,33 @@ function textbookLabel(entry) {
 
 function home() {
   const recent = getTextbookPosition(state.lastLesson)?.entry;
-  const entry = recent || textbookEntries[0];
+  const entry = recent || getTextbookPosition(viewId === 'recall' ? 'intro' : 'contours').entry;
+  const title = viewId === 'recall' ? entry.title : inquiries[entry.id].question;
+  const caption = viewId === 'recall' ? (recent ? '继续回顾' : '从绪论开始')
+    : viewId === 'nearby' ? '从一个现象开始' : (recent ? '继续调查' : '打开第一份调查');
+  const usesRainPhoto = viewId !== 'recall' && entry.id === 'contours';
+  const homePhoto = usesRainPhoto
+    ? '<img src="./assets/evidence/puddle.webp" alt="雨后路面上的积水" fetchpriority="high"><figcaption>雨后路面实景 · Paul The Writer / CC0</figcaption>'
+    : '<picture><source media="(min-width: 900px)" srcset="./assets/landscape.webp"><img src="./assets/landscape-small.webp" alt="高低起伏的山脊之间，一条河穿过塔拉河峡谷" fetchpriority="high"></picture><figcaption>塔拉河峡谷 · Alexkom000 / CC BY 4.0</figcaption>';
   return `
-    <section class="hero course-hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
+    <section class="inquiry-home" aria-labelledby="hero-title">
+      <div class="inquiry-home-copy">
         <p class="eyebrow">中图版（北京版） · 七年级上册</p>
-        <h1 id="hero-title">七上地理实验台</h1>
-        <p class="current-lesson">${escape(textbookLabel(entry))}</p>
-        <div class="hero-actions">
-          <a class="button primary" href="${lessonUrl(entry.id)}"><span><small>${recent ? '继续学习' : '从绪论开始'}</small><strong>${escape(entry.title)}</strong></span>${arrow}</a>
-        </div>
+        <h1 id="hero-title">${inquiryView.homeTitle}</h1>
+        <p>${inquiryView.homeDescription}</p>
+        <a class="button primary home-entry" href="${lessonUrl(entry.id)}"><span><small>${caption}</small><strong>${escape(title)}</strong></span>${arrow}</a>
       </div>
-      <a class="hero-credit" href="#/sources">塔拉河峡谷 · 摄影来源</a>
+      <figure class="inquiry-home-image">
+        ${homePhoto}
+      </figure>
     </section>
-    ${textbookDirectory(entry)}
-    <details class="panel course-tools" data-remember="lab-directory"><summary>单独打开实验</summary>
-      <div class="stack">${labs.map(lab => `<a class="link-row" href="${labUrl(lab.id)}"><strong>${escape(lab.title)} ${arrow}</strong></a>`).join('')}</div>
-    </details>`;
+    ${textbookDirectory(entry)}`;
 }
 
 function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entry || textbookEntries[0], standalone = false) {
-  const completed = work.filter(hasCompleted).length;
-  const progress = `<div class="progress-top"><progress max="${work.length}" value="${completed}" aria-label="七上学习进度"></progress><span>${completed} / ${work.length} 已学习</span></div>`;
   return `
     <section class="section book-directory" aria-label="七上课本目录">
-      ${standalone ? `<div class="section-title book-title"><h1>七上课本目录</h1>${progress}</div>` : sectionHeading('七上课本目录', '', progress)}
+      ${standalone ? '<div class="section-title book-title"><h1>七上课本目录</h1></div>' : sectionHeading('七上课本目录')}
       <div class="book-chapters">${textbookChapters.map(chapter => `
         <details class="chapter book-chapter" data-remember="chapter-${chapter.id}" ${current.chapter === chapter.id ? 'open' : ''}>
           <summary><span>${escape(chapter.prefix)}</span><strong>${escape(chapter.title)}</strong></summary>
@@ -95,8 +97,7 @@ function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entr
 
 function chapterLink(entry, currentId) {
   const prefix = entry.kind === 'project' ? '探究 · ' : entry.section ? `第 ${entry.section} 节 · ` : '';
-  const status = hasCompleted(byLesson.get(entry.id)) ? '已学习' : `第 ${entry.page} 页`;
-  return `<a class="chapter-row" ${entry.kind === 'project' ? 'data-project' : ''} ${entry.id === currentId ? 'aria-current="location"' : ''} href="${lessonUrl(entry.id)}"><span>${prefix}${escape(entry.title)}</span><span>${status}</span></a>`;
+  return `<a class="chapter-row" ${entry.kind === 'project' ? 'data-project' : ''} ${entry.id === currentId ? 'aria-current="location"' : ''} href="${lessonUrl(entry.id)}"><span>${prefix}${escape(entry.title)}</span><span>第 ${entry.page} 页</span></a>`;
 }
 
 function relationshipLinks(ids, origin, explanations) {
@@ -126,6 +127,7 @@ function taskHtml(task, index) {
 function bindTasks(tasks) {
   for (const task of tasks) {
     const element = document.querySelector('[data-task="' + task.id + '"]');
+    if (!element) continue;
     const options = [...element.querySelectorAll('[data-option]')];
     const feedback = element.querySelector('.feedback');
     for (const button of options) {
@@ -153,107 +155,140 @@ function bindTasks(tasks) {
 }
 
 
-function lessonNavigation(position, lesson) {
-  const { entry, previous, next } = position;
-  const label = !next ? '学到本册最后一项' : next.kind === 'project' ? '本章探究'
+function lessonNavigation({ entry, next }) {
+  const label = !next ? '读到本册最后一项' : next.kind === 'project' ? '本章探究'
     : next.chapter !== entry.chapter && entry.chapter !== 0 ? '下一章' : '下一课';
-  return `<nav class="course-next" aria-label="继续按课本学习">
-    <a class="button primary next-lesson" href="${next ? lessonUrl(next.id) : '#/textbook'}"><span><small>${label}</small><strong>${escape(next?.title || '回看七上目录')}</strong></span>${arrow}</a>
-    <div class="course-nav-secondary">
-      ${previous ? `<a class="text-link" href="${lessonUrl(previous.id)}" aria-label="上一项：${escape(previous.title)}">← 上一项</a>` : ''}
-      <a class="text-link" href="#/textbook">课本目录</a>
-      <button type="button" class="text-link" data-complete aria-pressed="${hasCompleted(lesson)}">${hasCompleted(lesson) ? '✓ 已学习' : '记为已学习'}</button>
-    </div>
+  const href = next ? lessonUrl(next.id) : '#/textbook';
+  return `<nav class="course-next" aria-label="继续按课本回顾" data-inquiry-section="next">
+    <a class="button primary next-lesson" href="${href}"><span><small>${label}</small><strong>${escape(next?.title || '回看七上目录')}</strong></span>${arrow}</a>
   </nav>`;
 }
 
-const introLabModes = { 'earth-model': 'coordinates', 'earth-motion': 'daylight', 'land-ocean': 'terrain' };
-
-function showLesson(lesson) {
-  const position = getTextbookPosition(lesson.id);
-  const { entry, index, total } = position;
-  const isProject = entry.kind === 'project';
-  const ownConcepts = lesson.concepts || [];
-  const lab = byLab.get(lesson.id === 'land-ocean' ? 'globe' : lesson.visual);
-  const mapActivity = lesson.id === 'maps';
-  const openingVisual = hasOpeningVisual(lesson.id);
-  const addedActivity = hasEvidenceActivity(lesson.id);
-  const origin = activeHash;
-  const help = entry.help;
-  const related = [...new Set(lesson.links || [])].filter(id => {
-    const relatedLesson = getTextbookPosition(byConcept.get(id)?.lessonId);
-    return id !== help?.conceptId && relatedLesson && relatedLesson.index <= index;
-  }).slice(0, 2);
-  const hasOpening = Boolean(lab || lesson.widget || mapActivity || openingVisual || addedActivity);
-  const stateKey = 'lesson-' + lesson.id;
-  const completion = hasCompleted(lesson);
-  main.innerHTML = `
-    <div class="course-lesson">
-      <header class="course-lesson-head">
-        <div class="course-position"><a href="#/textbook">${escape(textbookLabel(entry))}</a><span>教材第 ${entry.page} 页</span><span class="course-index" aria-label="全册第 ${index + 1} 项，共 ${total} 项">${index + 1} / ${total}</span></div>
-        <h1>${escape(lesson.title)}</h1>
-      </header>
-      <section class="course-opening ${lab ? 'course-opening-lab' : 'panel'}">
-        <div class="opening-heading"><h2>${escape(entry.prompt)}</h2>${lab || mapActivity || lesson.widget ? `<p>${escape(entry.action)}</p>` : ''}</div>
-        ${lab ? '<div data-lesson-lab></div>' : ''}
-        ${mapActivity ? '<div data-map-direction class="direction-panel course-direction"></div>' : ''}
-        ${lesson.widget ? '<div data-widget></div>' : ''}
-        ${openingVisual || addedActivity ? '<div data-opening-visual></div>' : ''}
-        ${!hasOpening && lesson.tasks[0] ? taskHtml(lesson.tasks[0], 0) : ''}
-        ${help ? `<a class="course-help text-link" href="${conceptUrl(help.conceptId, origin)}">${escape(help.label)} <span aria-hidden="true">↗</span></a>` : ''}
-      </section>
-      ${isProject ? `<section class="panel course-note"><label for="project-note" class="field-label">留下一句理由</label>
-        <textarea id="project-note" rows="2" maxlength="2000" placeholder="我这样选，因为我看到……">${escape(typeof state.notes[lesson.id] === 'string' ? state.notes[lesson.id] : '')}</textarea>
-        <small>写下的内容会保存在这个浏览器中。</small></section>` : ''}
-      ${lessonNavigation(position, lesson)}
-      <div class="course-extras">
-        <details class="panel course-details" data-remember="takeaway"><summary>这一课学到了什么</summary>
-          <p>${escape(lesson.takeaway)}</p>
-          ${ownConcepts.length ? `<ul class="course-glossary">${ownConcepts.map(concept => `<li><a class="text-link" href="${conceptUrl(concept.id, origin)}">${escape(concept.title)}</a></li>`).join('')}</ul>` : ''}
-        </details>
-        <details class="panel course-details" data-remember="practice"><summary>再练一练 <small data-task-count>${isDone(lesson) ? '全部答对' : `${doneCount(lesson)} / ${lesson.tasks.length} 题`}</small></summary>
-          ${lesson.tasks.slice(hasOpening ? 0 : 1).map((task, i) => taskHtml(task, i + (hasOpening ? 0 : 1))).join('')}
-        </details>
-        ${related.length ? `<details class="panel course-details" data-remember="connections"><summary>想多看一点</summary><div class="stack">${relationshipLinks(related, origin)}</div></details>` : ''}
-        <a class="course-book-source text-link" href="${bookPageUrl(lesson.page)}" target="_blank" rel="noopener">查看教材第 ${lesson.page} 页 ↗</a>
-      </div>
-    </div>`;
-  learning.recordVisit(lesson.id);
-  bindTasks(lesson.tasks);
-  const complete = main.querySelector('[data-complete]');
-  if (completion) complete.disabled = true;
-  complete.addEventListener('click', () => {
-    learning.markCompleted(lesson.id);
-    complete.textContent = '✓ 已学习';
-    complete.setAttribute('aria-pressed', 'true');
-    complete.disabled = true;
-  });
-  const disposers = [];
-  if (lab) {
-    const params = new URLSearchParams();
-    if (introLabModes[lesson.id]) params.set('mode', introLabModes[lesson.id]);
-    const legacy = state.labs[lab.id];
-    const legacyEntry = legacy && new URLSearchParams(legacy.entryKey).get('from') === lesson.id
-      ? { ...legacy, entryKey: params.toString() } : undefined;
-    const saved = learning.getView(origin)?.labState ?? state.labs[stateKey] ?? legacyEntry;
-    disposers.push(mountLearningLab(main.querySelector('[data-lesson-lab]'), lab, params, saved, stateKey, { inline: true, origin }));
-  }
-  if (mapActivity) mountMapDirection(main.querySelector('[data-map-direction]'), state.widgets[lesson.id],
-    settings => learning.setRecord('widgets', lesson.id, settings));
-  if (lesson.widget) disposers.push(mountWidget(main.querySelector('[data-widget]'), lesson.widget, state.widgets[lesson.id],
-    settings => learning.setRecord('widgets', lesson.id, settings)));
-  if (openingVisual || addedActivity) {
-    const mount = openingVisual ? mountOpeningVisual : mountEvidenceActivity;
-    disposers.push(mount(main.querySelector('[data-opening-visual]'), lesson.id, state.widgets[lesson.id],
-      settings => learning.setRecord('widgets', lesson.id, settings)));
-  }
-  cleanup = () => disposers.forEach(dispose => dispose?.());
-  const note = main.querySelector('#project-note');
-  note?.addEventListener('input', () => learning.setRecord('notes', lesson.id, note.value));
+function activityMarkup(lesson, activities) {
+  return activities.map((activity, index) => {
+    const id = activityKey(lesson.id, activity);
+    const host = `<div class="inquiry-activity" data-activity="${id}"><p class="activity-wait" role="status">正在准备图和操作…</p></div>`;
+    const gallery = activity.kind === 'lab' && activity.id === 'globe'
+      ? '<section class="inline-mountain" data-inline-mountain hidden aria-label="山地照片"><h3 tabindex="-1" data-mountain-heading></h3><div class="photo-gallery" data-inline-photos></div></section>'
+      : '';
+    if (index === 0) return host + gallery;
+    return `<section class="inquiry-extra-activity" data-inquiry-section="activity-${activity.kind}"><h3>${escape(activity.title)}</h3>${host}${gallery}</section>`;
+  }).join('');
 }
 
-function mountLearningLab(host, lab, params, saved, key, options = {}) {
+function lessonNote(lesson, data) {
+  if (viewId !== 'fieldwork' && !projects.includes(lesson)) return '';
+  return `<details class="inquiry-note" data-remember="inquiry-note" data-inquiry-section="note">
+    <summary>留一句我的判断</summary>
+    <label for="project-note">${escape(data.compare)}</label>
+    <textarea id="project-note" rows="2" maxlength="2000" placeholder="我现在觉得……我在图上看到……">${escape(typeof state.notes[lesson.id] === 'string' ? state.notes[lesson.id] : '')}</textarea>
+  </details>`;
+}
+
+function showLesson(lesson, storedView) {
+  const position = getTextbookPosition(lesson.id);
+  const data = inquiries[lesson.id];
+  const activities = lessonActivities[lesson.id];
+  main.innerHTML = renderInquiry({
+    entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
+    activityMarkup: activityMarkup(lesson, activities),
+    footer: lessonNavigation(position), note: lessonNote(lesson, data),
+  });
+  learning.recordVisit(lesson.id);
+  const note = main.querySelector('#project-note');
+  note?.addEventListener('input', () => learning.setRecord('notes', lesson.id, note.value));
+
+  const session = { active: true, disposers: [] };
+  activities.forEach((activity, index) => {
+    const key = activityKey(lesson.id, activity);
+    const host = main.querySelector('[data-activity="' + key + '"]');
+    const mount = () => mountInquiryActivity(host, lesson, activity, key, session, storedView);
+    if (index === 0 || storedView?.mountain && activity.kind === 'lab' || !('IntersectionObserver' in window)) mount();
+    else {
+      const observer = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          observer.disconnect();
+          mount();
+        }
+      }, { rootMargin: '180px 0px' });
+      observer.observe(host);
+      session.disposers.push(() => observer.disconnect());
+    }
+  });
+  cleanup = () => {
+    session.active = false;
+    session.disposers.forEach(dispose => dispose());
+  };
+}
+
+function inlineMountainGallery(section, route) {
+  const heading = section.querySelector('[data-mountain-heading]');
+  const gallery = section.querySelector('[data-inline-photos]');
+  let dispose;
+  return {
+    open(id, focus) {
+      const topic = topicViews[id];
+      if (!topic?.photos?.length) return;
+      section.hidden = false;
+      heading.textContent = byConcept.get(id).title;
+      dispose?.();
+      const stored = learning.getView(route);
+      const previous = stored?.mountain;
+      dispose = mountPhotoGallery(gallery, topic.photos, previous?.id === id ? previous.index : 0,
+        index => learning.saveView(route, { mountain: { id, index } }), { embedded: true });
+      if (previous?.id !== id) learning.saveView(route, { mountain: { id, index: 0 } });
+      if (focus) {
+        section.scrollIntoView({ block: 'start' });
+        heading.focus({ preventScroll: true });
+      }
+    },
+    dispose() { dispose?.(); },
+  };
+}
+
+async function mountInquiryActivity(host, lesson, activity, key, session, storedView) {
   const route = activeHash;
+  const isActive = () => session.active && host.isConnected;
+  try {
+    if (activity.kind === 'lab') {
+      const stateKey = 'lesson-' + lesson.id;
+      const legacy = state.labs[activity.id];
+      const params = new URLSearchParams(activity.mode ? { mode: activity.mode } : {});
+      const legacyEntry = legacy && new URLSearchParams(legacy.entryKey).get('from') === lesson.id
+        ? { ...legacy, entryKey: params.toString() } : undefined;
+      const saved = learning.getView(route)?.labState ?? state.labs[stateKey] ?? legacyEntry;
+      const section = host.nextElementSibling;
+      const mountain = section?.matches('[data-inline-mountain]') ? inlineMountainGallery(section, route) : null;
+      const runner = await mountLearningLab(host, byLab.get(activity.id), params, saved, stateKey,
+        { inline: true, origin: route, onTopic: id => mountain?.open(id, true) }, isActive);
+      if (!runner) return;
+      if (mountain) {
+        const alreadyOpen = learning.getView(route)?.mountain;
+        if (alreadyOpen) mountain.open(alreadyOpen.id, false);
+        session.disposers.push(() => mountain.dispose());
+      }
+      session.disposers.push(runner);
+      if (storedView?.section) restoreInquiryPosition(storedView);
+      else if (activity === lessonActivities[lesson.id][0]) fitActivityStage(host);
+    } else {
+      const saved = state.activities[key] ?? (!['legend', 'rain', 'world'].includes(activity.kind) ? state.widgets[lesson.id] : undefined);
+      const dispose = await mountLessonVisual(host, activity, lesson.id, saved,
+        settings => learning.setRecord('activities', key, settings), viewId, isActive);
+      if (typeof dispose === 'function') session.disposers.push(dispose);
+      if (isActive() && storedView?.section) restoreInquiryPosition(storedView);
+    }
+  } catch (error) {
+    if (!isActive()) return;
+    console.error('Learning activity failed to mount', key, error);
+    host.innerHTML = '<p class="activity-wait" role="status">这张图暂时没能打开。<button class="chip" type="button">重新加载</button></p>';
+    host.querySelector('button').addEventListener('click', () => mountInquiryActivity(host, lesson, activity, key, session, storedView), { once: true });
+  }
+}
+
+async function mountLearningLab(host, lab, params, saved, key, options, isActive) {
+  const route = activeHash;
+  const { mountLabUI } = await import('./lab-ui.js?v=3');
+  if (!isActive()) return;
   let mounted = false;
   const dispose = mountLabUI(host, lab, params, saved, settings => {
     learning.saveView(route, { labState: settings });
@@ -293,6 +328,48 @@ function contextReturn(from) {
 }
 
 
+function conceptLabMode(id) {
+  return ['day-night', 'seasons', 'earth-axis'].includes(id) ? { mode: 'daylight' }
+    : ['geo-latitude', 'geo-longitude'].includes(id) ? { mode: 'coordinates' } : {};
+}
+
+const conceptExamples = {
+  legend: { kind: 'legend' },
+  'map-purpose': { kind: 'legend' },
+  'terrain-profile': { kind: 'rain' },
+  'relative-height': { kind: 'rain' },
+  'geographic-observation': { kind: 'opening', id: 'intro' },
+  'solar-system': { kind: 'opening', id: 'earth-space' },
+  'remote-sensing': { kind: 'opening', id: 'spaceflight' },
+  continents: { kind: 'world' },
+  'land-change-evidence': { kind: 'evidence', id: 'land-change' },
+  'ocean-floor': { kind: 'evidence', id: 'project-seafloor' },
+  'climate-chart': { kind: 'chart', id: 'climate' },
+  precipitation: { kind: 'chart', id: 'climate' },
+  'air-temperature': { kind: 'chart', id: 'climate' },
+  forecast: { kind: 'chart', id: 'weather' },
+  'population-density': { kind: 'chart', id: 'population' },
+  trade: { kind: 'evidence', id: 'cooperation' },
+};
+
+function conceptExample(id) {
+  return conceptExamples[id];
+}
+
+async function mountConceptExample(host, example, route) {
+  const previous = cleanup;
+  let dispose;
+  cleanup = () => { previous?.(); dispose?.(); };
+  try {
+    dispose = await mountLessonVisual(host, example, '', learning.getView(route)?.example,
+      settings => learning.saveView(route, { example: settings }), viewId, () => host.isConnected);
+  } catch (error) {
+    if (!host.isConnected) return;
+    console.error('Concept example failed to open', error);
+    host.textContent = '示意图暂时没能打开。';
+  }
+}
+
 function showConcept(concept, query) {
   const origin = contextReturn(query.get('from'));
   const currentCard = conceptUrl(concept.id, origin.href);
@@ -300,6 +377,7 @@ function showConcept(concept, query) {
   const links = new Map(edges.map(item => [item.id, item]));
   const lesson = byLesson.get(concept.lessonId);
   const topic = topicViews[concept.id];
+  const example = conceptExample(concept.id);
   const compareWith = byConcept.get(topic?.compareWith);
   const directlyRelatedLab = labs.find(lab => lab.links.includes(concept.id));
   const available = topic ? [topic.compareWith, 'contour'] : [...links.keys()];
@@ -318,13 +396,14 @@ function showConcept(concept, query) {
       ${pageIntro(concept.title, '', lesson ? '教材 · ' + lesson.title : '', 'concept-page-intro')}
       ${concept.id === 'map-direction' ? '<section class="panel direction-panel" data-map-direction aria-label="地图方向示意"></section>' : ''}
       ${topic?.photos?.length ? '<section class="panel photo-gallery" data-gallery aria-label="观察图片"></section>' : ''}
+      ${example ? '<section class="panel inquiry-concept-example" data-concept-example aria-label="看图回顾"></section>' : ''}
       <section class="panel concept-summary">
         <p>${escape(concept.text)}</p>
       </section>
       ${links.size || compareWith || directlyRelatedLab ? `<details class="panel course-details" data-remember="more-concepts"><summary>想多看一点</summary>
         <div class="stack concept-links">${relationshipLinks(importantIds, origin.href, recommendations)}</div>
         ${compareWith ? `<a href="${labUrl('terrain', { site: concept.id, siteB: compareWith.id, fromConcept: concept.id, fromCard: currentCard })}" class="text-link concept-experiment">和${escape(compareWith.title)}比地形 ${arrow}</a>`
-          : directlyRelatedLab ? `<a href="${labUrl(directlyRelatedLab.id, { fromConcept: concept.id, fromCard: currentCard })}" class="text-link concept-experiment">打开相关实验 ${arrow}</a>` : ''}
+          : directlyRelatedLab ? `<a href="${labUrl(directlyRelatedLab.id, { ...conceptLabMode(concept.id), fromConcept: concept.id, fromCard: currentCard })}" class="text-link concept-experiment">打开相关实验 ${arrow}</a>` : ''}
         ${origin.href === '#/explore' && otherIds.length ? `<details class="other-relations" data-remember="all-relations"><summary>查看全部联系</summary><div class="stack">${relationshipLinks(otherIds, origin.href, links)}</div></details>` : ''}
       </details>` : ''}
       <details class="panel concept-tools course-details" data-remember="concept-tools"><summary>查课本或收藏</summary>
@@ -341,6 +420,8 @@ function showConcept(concept, query) {
   const gallery = main.querySelector('[data-gallery]');
   if (gallery) cleanup = mountPhotoGallery(gallery, topic.photos, learning.getView(cardState)?.galleryIndex,
     index => learning.saveView(cardState, { galleryIndex: index }));
+  const exampleHost = main.querySelector('[data-concept-example]');
+  if (exampleHost) mountConceptExample(exampleHost, example, cardState);
   const bookmark = main.querySelector('[data-bookmark]');
   bookmark.addEventListener('click', () => {
     const selected = !state.saved.includes(concept.id);
@@ -428,13 +509,18 @@ function review() {
   const recent = work.filter(lesson => state.visits[lesson.id])
     .sort((a, b) => Number(state.visits[b.id]) - Number(state.visits[a.id])).slice(0, 8);
   const list = (items, empty) => items.length ? `<div class="review-list">${items.map(lesson => `<div class="review-item">
-    <a href="${lessonUrl(lesson.id)}">${escape(lesson.title)}</a><small>${doneCount(lesson)} / ${lesson.tasks.length} 题</small></div>`).join('')}</div>` : `<p class="empty">${empty}</p>`;
+    <a href="#/practice/${lesson.id}">${escape(lesson.title)}</a><small>${doneCount(lesson)} / ${lesson.tasks.length} 题</small></div>`).join('')}</div>` : `<p class="empty">${empty}</p>`;
   main.innerHTML = `
     ${pageIntro('我的复习', '找回做过的课、再看没想通的题，也可以把进度带到另一台设备。')}
     <div class="lesson-shell">
       <div class="lesson-content">
         <section class="panel"><h2>再试一次</h2>${list(needsReview, '如果一道题想再查证，它所在的课会显示在这里。')}</section>
-        <section class="panel"><h2>最近学过</h2>${list(recent, '做过第一课后，可以在这里快速返回。')}</section>
+        <section class="panel"><h2>最近回顾</h2>${recent.length ? '<div class="review-list">' + recent.map(lesson => `<div class="review-item"><a href="${lessonUrl(lesson.id)}">${escape(lesson.title)}</a></div>`).join('') + '</div>' : '<p class="empty">打开过的课会出现在这里。</p>'}</section>
+        <section class="panel"><h2>按课练习</h2><form class="review-practice">
+          <label class="field-label" for="practice-lesson">选一课</label>
+          <select id="practice-lesson" required><option value="">请选择</option>${textbookEntries.map(entry => `<option value="${entry.id}">${escape(entry.title)}</option>`).join('')}</select>
+          <button class="button" type="submit">开始练习</button>
+        </form></section>
       </div>
       <aside class="lesson-aside">
         <section class="panel"><h2>收藏知识点</h2>
@@ -445,6 +531,11 @@ function review() {
         </section>
       </aside>
     </div>`;
+  main.querySelector('.review-practice').addEventListener('submit', event => {
+    event.preventDefault();
+    const selected = main.querySelector('#practice-lesson').value;
+    if (byLesson.has(selected)) location.hash = '#/practice/' + selected;
+  });
   main.querySelector('#export').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(learning.exportProgress(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -472,10 +563,18 @@ function review() {
   });
 }
 
+function practice(lesson) {
+  main.innerHTML = `${breadcrumb(lesson.title, '#/review', '复习')}
+    ${pageIntro(lesson.title, '用刚才学过的方法想一想。', '按课练习')}
+    <section class="panel">${lesson.tasks.map(taskHtml).join('')}</section>`;
+  bindTasks(lesson.tasks);
+}
+
 function legend() {
-  main.innerHTML = `${breadcrumb('常用地图图例')}${pageIntro('常用地图图例', '这些符号用来练习辨认。读具体地图时，先看该图自己的图例。', '课本附录 · 第 125 页')}
-    <div class="grid">${legendItems.map(item => `<article class="card"><div class="legend-item"><span aria-hidden="true" class="legend-symbol">${escape(item.symbol)}</span><h3>${escape(item.title)}</h3></div><p>${escape(item.text)}</p></article>`).join('')}</div>
-    <div class="actions"><a class="button" href="${lessonUrl('maps')}">回到认识地图</a><a class="button" href="${bookPageUrl(125)}" target="_blank" rel="noopener">查看教材图例 ↗</a></div>`;
+  main.innerHTML = `${breadcrumb('常用地图图例')}${pageIntro('常用地图图例', '先点地图上的线、符号和文字，再看看它们各在告诉你什么。', '课本附录 · 第 125 页')}
+    <section class="panel" data-legend-example></section>
+    <div class="grid">${legendItems.map(item => `<article class="card"><div class="legend-item"><span aria-hidden="true" class="legend-symbol">${escape(item.symbol)}</span><h3>${escape(item.title)}</h3></div><p>${escape(item.text)}</p></article>`).join('')}</div>`;
+  mountConceptExample(main.querySelector('[data-legend-example]'), { kind: 'legend' }, '#/legend');
 }
 
 function sources() {
@@ -499,11 +598,17 @@ function captureView() {
   if (!activeHash) return;
   const { page, id } = routeParts(activeHash);
   const details = Array.from(main.querySelectorAll('details[data-remember]'), element => [element.dataset.remember, element.open]);
+  const nearest = page === 'lesson' && Array.from(main.querySelectorAll('[data-inquiry-section]'))
+    .find(element => element.getBoundingClientRect().bottom > 36);
   const position = { scrollY, details: Object.fromEntries(details) };
+  if (nearest) {
+    position.section = nearest.dataset.inquirySection;
+    position.offset = -nearest.getBoundingClientRect().top;
+  }
   learning.saveView(activeHash, position);
   if (page === 'lesson' && byLesson.has(id)) {
     const previous = state.positions[id];
-    if (previous?.scrollY !== position.scrollY || JSON.stringify(previous?.details) !== JSON.stringify(position.details)) {
+    if (previous?.scrollY !== position.scrollY || previous?.section !== position.section || JSON.stringify(previous?.details) !== JSON.stringify(position.details)) {
       learning.setRecord('positions', id, position);
     }
   }
@@ -517,18 +622,17 @@ function restoreView(view) {
   }
 }
 
-function fitWorkspace() {
-  const layout = main.querySelector('.lab-layout');
-  const dock = main.querySelector('.lab-dock');
-  if (!layout || !dock) return;
-  const clipped = dock.getBoundingClientRect().bottom - innerHeight + 8;
-  const stageStart = layout.getBoundingClientRect().top;
-  if (clipped > 0 && stageStart > 0) scrollBy(0, Math.min(clipped, stageStart));
+function restoreInquiryPosition(view) {
+  if (!view?.section) return;
+  const section = Array.from(main.querySelectorAll('[data-inquiry-section]'))
+    .find(element => element.dataset.inquirySection === view.section);
+  if (section) scrollBy(0, section.getBoundingClientRect().top + (view.offset ?? 0));
 }
 
 function render() {
   const next = location.hash.startsWith('#/') ? location.hash : '#/';
   const previous = activeHash;
+  const version = ++renderVersion;
   clearTimeout(storeTimer);
   captureView();
   cleanup?.();
@@ -538,15 +642,17 @@ function render() {
   const { page, id, query } = routeParts(next);
   const lesson = page === 'lesson' ? byLesson.get(id) : null;
   const view = learning.getView(next) ?? (lesson ? state.positions[id] : null);
-  const activeTab = page === 'explore' || page === 'concept' ? 'explore' : page === 'review' ? 'review' : 'home';
+  document.documentElement.dataset.learningRoute = page;
+  const activeTab = page === 'explore' || page === 'concept' ? 'explore' : page === 'review' || page === 'practice' ? 'review' : 'home';
   for (const link of document.querySelectorAll('[data-nav]')) {
+    if (link.dataset.nav === 'home') link.textContent = page === 'lesson' ? '‹ 课本目录' : '课本';
     if (link.dataset.nav === activeTab) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
   if (!page) main.innerHTML = home();
   else if (page === 'textbook') main.innerHTML = textbookDirectory(undefined, true);
   else if (lesson) {
-    showLesson(lesson);
+    showLesson(lesson, view);
     const cameFrom = previous ? routeParts(previous) : null;
     const contextualBack = cameFrom?.page === 'concept' && contextReturn(cameFrom.query.get('from')).href === next
       || cameFrom?.page === 'lab' && (cameFrom.query.get('returnTo') === next || cameFrom.query.get('from') === id);
@@ -568,12 +674,25 @@ function render() {
     main.innerHTML = `${breadcrumb(lab.title, backUrl, backLabel)}
       ${pageIntro(lab.title, lab.description, '', 'lab-page-intro')}<div data-lab></div>
       <details class="panel course-details" data-remember="lab-concepts"><summary>相关课本知识</summary><div class="stack">${relationshipLinks(lab.links, activeHash)}</div></details>`;
-    cleanup = mountLearningLab(main.querySelector('[data-lab]'), lab, query, view?.labState ?? state.labs[id], id, { origin: next });
+    const host = main.querySelector('[data-lab]');
+    mountLearningLab(host, lab, query, view?.labState ?? state.labs[id], id, { origin: next },
+      () => renderVersion === version).then(dispose => {
+        if (!dispose) return;
+        if (renderVersion !== version) { dispose(); return; }
+        cleanup = dispose;
+        if (view?.scrollY) scrollTo(0, view.scrollY);
+        else fitActivityStage(host);
+      }).catch(error => {
+        if (renderVersion !== version) return;
+        console.error(error);
+        host.textContent = '实验暂时打不开，请刷新后再试。';
+      });
   } else if (page === 'explore') {
     const storedQuery = view?.search;
     if (storedQuery) Object.assign(exploreState, storedQuery);
     explore();
   } else if (page === 'review') review();
+  else if (page === 'practice' && byLesson.has(id)) practice(byLesson.get(id));
   else if (page === 'legend') legend();
   else if (page === 'sources') sources();
   else main.innerHTML = `${pageIntro('这个页面没有找到', '可以从课本目录重新出发。')}<a class="button primary" href="#/textbook">打开课本</a>`;
@@ -583,8 +702,8 @@ function render() {
   scrollTo(0, view?.scrollY || 0);
   requestAnimationFrame(() => {
     if (activeHash !== next) return;
-    if (view?.scrollY) scrollTo(0, view.scrollY);
-    else if (page === 'lab' || lesson) fitWorkspace();
+    if (lesson && view?.section) restoreInquiryPosition(view);
+    else if (view?.scrollY) scrollTo(0, view.scrollY);
   });
 }
 window.addEventListener('scroll', () => {

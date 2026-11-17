@@ -338,45 +338,55 @@ function makeContourPainter() {
   return (ctx, width, height, config) => {
     const section = config.section === 'cd' ? 'cd' : 'ab';
     const [start, end] = [...section.toUpperCase()];
-    const wide = width > 510;
-    const planRoom = wide ? width * 0.41 : width;
-    const planHeight = wide ? height - 15 : height * 0.47;
-    const planWidth = Math.min(planRoom - 30, (planHeight - 24) / 0.7);
+    const wide = width > 510 || width / height > 2.15;
+    const planRoom = wide ? Math.min(width * 0.43, height * 1.32) : width;
+    const planY = 21;
+    const chartTop = wide ? 10 : Math.round(height * 0.53);
+    const planWidth = planRoom - (wide ? 20 : 26);
+    const planHeight = Math.min(wide ? height - 28 : chartTop - planY - 12, planWidth * 0.7);
+    if (planWidth < 40 || planHeight < 30) return;
     const planX = (planRoom - planWidth) / 2;
-    const planY = wide ? Math.max(20, (height - 0.7 * planWidth) / 2) : 19;
-    if (planWidth < 40) return;
-    ctx.drawImage(plan, planX, planY, planWidth, planWidth * 0.7);
-    font(ctx, 11, 600);
+    const scale = planWidth / plan.width;
+    const routeY = (SECTION_POSITIONS[section] + 3.5) * plan.width / 10;
+    const sourceHeight = planHeight / scale;
+    const sourceY = Math.max(0, Math.min(plan.height - sourceHeight, routeY - sourceHeight / 2));
+    ctx.drawImage(plan, 0, sourceY, plan.width, sourceHeight, planX, planY, planWidth, planHeight);
+    font(ctx, 12, 650);
     ctx.fillStyle = INK;
     ctx.textAlign = 'left';
-    ctx.fillText('从上看', planX, planY - 8);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sourceHeight < plan.height - 1 ? '沿线俯视图' : '从上看', planX, 10);
 
-    const lineY = planY + (SECTION_POSITIONS[section] + 3.5) * planWidth / 10;
+    const lineY = planY + (routeY - sourceY) * scale;
     const startX = planX + planWidth * 0.024;
     const endX = planX + planWidth * 0.976;
     strokeLine(ctx, startX, lineY, endX, lineY, '#fff3bf', 2.8);
     for (const [label, x] of [[start, startX], [end, endX]]) {
-      dot(ctx, x, lineY, 7, '#17474a', '#fff3bf');
+      dot(ctx, x, lineY, 10, '#17474a', '#fff3bf');
+      font(ctx, 13, 700);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fff3bf';
       ctx.fillText(label, x, lineY + 0.3);
     }
 
     const chart = wide
-      ? { x: planRoom, y: 17, width: width - planRoom - 6, height: height - 22 }
-      : { x: 3, y: planHeight + 3, width: width - 7, height: height - planHeight - 2 };
+      ? { x: planRoom, y: chartTop, width: width - planRoom - 6, height: height - chartTop - 6 }
+      : { x: 3, y: chartTop, width: width - 7, height: height - chartTop - 2 };
     const profile = contourProfile(section);
     const distance = profile.at(-1).distance;
     const steps = contourProfile(section, 13);
     const walkIndex = Math.max(0, Math.min(12, Math.round(config.walkStep ?? 0)));
     const sample = steps[walkIndex];
     const fraction = sample.distance / distance;
-    dot(ctx, startX + (endX - startX) * fraction, lineY, 4.8, '#ffc46d', '#592e18');
+    const walkX = startX + (endX - startX) * fraction;
+    const markerY = fraction === 0 || fraction === 1 ? lineY + 15 : lineY;
+    if (markerY !== lineY) strokeLine(ctx, walkX, lineY + 9, walkX, markerY, '#592e18', 1.6);
+    dot(ctx, walkX, markerY, 4.8, '#ffc46d', '#592e18');
     const lines = [{ color: MOUNTAIN_A, fill: '#087d7622', points: profile.map(({ distance: km, elevation }) => [km / distance, elevation]) }];
     drawChart(ctx, chart, {
       lines, maximum: 600, step: 150, walk: { fraction, elevation: sample.elevation },
-      unitY: `从侧面看 · 海拔（米）`,
-      unitX: (fraction) => fraction === 0 ? '0' : `${(fraction * distance).toFixed(1)} km`,
+      unitY: '从侧面看 · 海拔（米）',
+      unitX: (fraction) => fraction === 0 ? '0' : `${(fraction * distance).toFixed(1)} 千米`,
     });
   };
 }

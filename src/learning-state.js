@@ -1,8 +1,6 @@
 const legacyKey = 'geography-lab:learning:v1';
 const versionKey = 'geography-lab:learning:v2';
-const resumeKey = versionKey + ':resume';
-const viewsKey = 'geography-lab:views:v1';
-const groups = ['answers', 'visits', 'labs', 'widgets', 'notes', 'completed', 'positions', 'bookmarks'];
+const groups = ['answers', 'visits', 'labs', 'widgets', 'activities', 'notes', 'completed', 'positions', 'bookmarks'];
 const viewLimit = 48;
 
 function browserStorage(name) {
@@ -29,10 +27,15 @@ export function createLearningStore({
   lessons,
   concepts,
   labs,
+  activityIds = [],
+  namespace = '',
   onStorageError = () => {},
   storage = browserStorage('localStorage'),
   session = browserStorage('sessionStorage'),
 }) {
+  const storagePrefix = namespace ? versionKey + ':' + namespace : versionKey;
+  const resumeKey = storagePrefix + ':resume';
+  const viewsKey = 'geography-lab:views:v1' + (namespace ? ':' + namespace : '');
   const lessonIds = new Set(lessons.map(item => item.id));
   const conceptIds = new Set(concepts.map(item => item.id));
   const labIds = new Set(labs.map(item => item.id));
@@ -42,6 +45,7 @@ export function createLearningStore({
     visits: lessonIds,
     labs: new Set([...labIds, ...[...lessonIds].map(id => 'lesson-' + id)]),
     widgets: lessonIds,
+    activities: new Set(activityIds),
     notes: lessonIds,
     completed: lessonIds,
     positions: lessonIds,
@@ -113,7 +117,7 @@ export function createLearningStore({
   }
 
   // Separate keys keep two tabs from overwriting unrelated records.
-  const recordKey = (group, id) => `${versionKey}:${group}:${id}`;
+  const recordKey = (group, id) => `${storagePrefix}:${group}:${id}`;
 
   function refreshRecord(group, id) {
     const key = recordKey(group, id);
@@ -200,7 +204,7 @@ export function createLearningStore({
   }
 
   // Keep the old progress intact and overlay changes saved by this version.
-  const legacy = read(storage, legacyKey);
+  const legacy = namespace ? null : read(storage, legacyKey);
   if (isRecord(legacy)) normalizePayload(legacy, false);
   refresh();
 
@@ -209,8 +213,8 @@ export function createLearningStore({
     if (event.key === resumeKey) {
       const resume = normalizeResume(read(storage, resumeKey));
       if (resume && !memoryOnly.has(resumeKey)) assignResume(resume);
-    } else if (event.key.startsWith(versionKey + ':')) {
-      const [group, id] = event.key.slice(versionKey.length + 1).split(':');
+    } else if (event.key.startsWith(storagePrefix + ':')) {
+      const [group, id] = event.key.slice(storagePrefix.length + 1).split(':');
       if (Object.hasOwn(ids, group) && ids[group].has(id)) refreshRecord(group, id);
     }
   });

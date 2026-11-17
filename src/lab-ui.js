@@ -1,5 +1,6 @@
 import { contourProfile, sunlightAt, TERRAIN_SITES, TO_RADIANS } from './geo-model.js';
-import { mountFlat } from './flat.js?v=2';
+import { mountFlat } from './flat.js?v=3';
+import { fitActivityStage } from './activity-stage.js';
 import { FLOW_NOTES, getFlowPaths } from './flow-model.js';
 
 const defaultsByLab = {
@@ -33,8 +34,10 @@ function daylightHours(lat, declination) {
 
 function clipSettings(kind, saved, params) {
   const initial = defaultsByLab[kind];
-  const entryKey = params.toString();
-  const isNewEntry = entryKey !== saved?.entryKey;
+  const entryKey = ['mode', 'flow', 'season', 'site', 'siteB']
+    .map(key => params.has(key) ? key + '=' + params.get(key) : '').filter(Boolean).join('&');
+  const previous = new URLSearchParams(saved?.entryKey);
+  const isNewEntry = !saved || ['mode', 'flow', 'season', 'site', 'siteB'].some(key => params.get(key) !== previous.get(key));
   const state = {
     ...initial,
     entryKey,
@@ -97,7 +100,7 @@ function globeFocus(settings) {
   return { lat: settings.pointLat, lon: settings.pointLon };
 }
 
-const controls = (kind, settings) => {
+const controls = (kind, settings, inline) => {
   if (kind === 'globe') return `
     <div class="control-pair" data-coordinate-controls>
       <div class="control-group"><label for="lab-lat">纬度 <output data-value="lat"></output></label><input id="lab-lat" type="range" min="-90" max="90" value="${settings.lat}" data-number="lat"></div>
@@ -118,7 +121,7 @@ const controls = (kind, settings) => {
     </div>
     <div class="control-pair" data-globe-terrain hidden>
       <div class="control-group"><label for="terrain-focus">找一处山地</label><select id="terrain-focus" data-terrain-focus>${sites.map(([id, site]) => `<option value="${id}">${site.name}</option>`).join('')}</select></div>
-      <div class="dock-link"><a class="button" data-terrain-knowledge>山地照片 →</a></div>
+      <div class="dock-link">${inline ? '<button type="button" class="button" data-terrain-knowledge>看这座山的照片</button>' : '<a class="button" data-terrain-knowledge>山地照片 →</a>'}</div>
     </div>
     <div data-globe-flows hidden>
       <div class="control-pair">
@@ -174,7 +177,7 @@ function challengeHtml(kind, inline) {
     : `<section class="panel"><h2>${task.title}</h2>${answers}</section>`;
 }
 
-export function mountLabUI(host, lab, params, saved, onChange, { inline = false, origin = location.hash } = {}) {
+export function mountLabUI(host, lab, params, saved, onChange, { inline = false, origin = location.hash, onTopic } = {}) {
   const kind = lab.id;
   let settings = clipSettings(kind, saved, params);
   const challenge = challenges[kind];
@@ -214,15 +217,15 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
           <div class="lab-live"><p data-live></p><div data-flow-legend class="flow-legend" hidden></div></div>
       </div>
       <section class="lab-dock" aria-label="实验控制">
-        <div class="lab-control">${controls(kind, settings)}</div>
+        <div class="lab-control">${controls(kind, settings, inline)}</div>
       </section>
       <details class="panel lab-evidence">
         <summary>图例与读数说明</summary><p class="lab-reading" data-reading></p>
-        ${kind === 'terrain' ? '<p data-terrain-links></p><a class="text-link" href="https://r1-ndr.ykt.cbern.com.cn/edu_product/esp/assets/7b63faa4-c6d8-4c9d-b18b-21394da1c56e.t/zh-CN/1787023052170/transcode/image/64.jpg" target="_blank" rel="noopener">查阅教材世界地形图 ↗</a>' : ''}
+        ${kind === 'terrain' ? '<p data-terrain-links></p>' : ''}
         ${kind === 'globe' ? '<p data-overlay-links></p>' : ''}
       </details>
     </div>
-    <div class="lab-followup" data-challenge>${challengeHtml(kind, inline)}</div>`;
+    <div class="lab-followup" data-challenge>${inline ? '' : challengeHtml(kind, false)}</div>`;
 
   const stage = host.querySelector('[data-stage-state]');
   const sceneHost = host.querySelector('.scene-host');
@@ -274,12 +277,12 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
         live.textContent = `${site.region} · ${site.name} · ${coordinates(site.lat, site.lon)}`;
         reading.textContent = '选一处山地，看看标记附近的陆地哪里起伏最明显。图上的明暗让起伏更容易看见。读具体海拔时，可以翻教材的分层设色地形图。';
         const knowledge = host.querySelector('[data-terrain-knowledge]');
-        knowledge.href = '#/concept/' + settings.terrainFocus + '?' + new URLSearchParams({ from: origin });
+        if (!inline) knowledge.href = '#/concept/' + settings.terrainFocus + '?' + new URLSearchParams({ from: origin });
         const link = document.createElement('a');
         link.href = '#/lab/terrain?' + new URLSearchParams({ site: settings.terrainFocus, fromGlobe: 'terrain', returnTo: origin });
         link.className = 'text-link';
         link.textContent = '并排比较两处山地 →';
-        overlayLinks.append(link);
+        if (!inline) overlayLinks.append(link);
       } else if (settings.mode === 'circulation') {
         const path = settings.flow === 'monsoon' ? getFlowPaths('monsoon', settings.season)[0] : currents.find(item => item.id === settings.currentId);
         const type = path.kind === 'warm' ? '暖流' : path.kind === 'cold' ? '寒流' : '低层风';
@@ -294,7 +297,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
         link.href = '#/lesson/climate';
         link.className = 'text-link';
         link.textContent = '联系七上 世界主要气候类型 →';
-        overlayLinks.append(link);
+        if (!inline) overlayLinks.append(link);
       } else if (settings.mode === 'daylight') {
         const sun = sunlightAt(settings.lat, settings.lon, settings.hour, settings.month);
         if (settings.dayPair && settings.lat !== 0) {
@@ -343,6 +346,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       button.setAttribute('aria-pressed', String(settings.answer === index));
       button.classList.toggle('try-again', index !== correctAnswer && settings.answer === index);
     }
+    if (!labFeedback) return;
     labFeedback.hidden = !Number.isInteger(settings.answer);
     if (!labFeedback.hidden) {
       labFeedback.textContent = challenges[kind].feedback[settings.answer];
@@ -419,7 +423,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       if (turn) turn.hidden = false;
       syncControls();
       if (focusControls) requestAnimationFrame(() => {
-        if (!disposed && activeMode === 'three') fitControls();
+        if (!disposed && activeMode === 'three') fitActivityStage(host);
       });
       rotation.setAttribute('aria-pressed', String(touchEnabled));
       rotation.textContent = touchEnabled ? '恢复页面滑动' : '旋转场景';
@@ -455,17 +459,9 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     else if (key === 'lon') changePoint(settings.lat, value);
     else change({ [key]: value });
   });
-  function fitControls() {
-    const workspace = host.querySelector('.lab-layout');
-    const dock = host.querySelector('.lab-dock');
-    const clipped = dock.getBoundingClientRect().bottom - innerHeight + 8;
-    const start = workspace.getBoundingClientRect().top;
-    if (clipped > 0 && start > 0) scrollBy(0, Math.min(clipped, start));
-  }
-
   for (const button of host.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {
     change({ mode: button.dataset.mode }, true);
-    fitControls();
+    fitActivityStage(host);
   });
   for (const button of host.querySelectorAll('[data-point]')) button.addEventListener('click', () => {
     const [lat, lon] = button.dataset.point.split(',').map(Number);
@@ -475,9 +471,10 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     const dayPair = !settings.dayPair;
     if (dayPair && settings.lat === 0) change({ dayPair, lat: 40, pointLat: 40 });
     else change({ dayPair });
-    fitControls();
+    fitActivityStage(host);
   });
   host.querySelector('[data-terrain-focus]')?.addEventListener('change', event => setGlobeFocus({ terrainFocus: event.target.value }));
+  if (inline) host.querySelector('[data-terrain-knowledge]')?.addEventListener('click', () => onTopic?.(settings.terrainFocus));
   host.querySelector('[data-flow]')?.addEventListener('change', event => setGlobeFocus({ flow: event.target.value }));
   host.querySelector('[data-current]')?.addEventListener('change', event => setGlobeFocus({ currentId: event.target.value }));
   host.querySelector('[data-season]')?.addEventListener('change', event => change({ season: event.target.value }));

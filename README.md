@@ -1,31 +1,33 @@
 # 地理实验台
 
-按中国地图出版社中图北京版《地理》七年级上册（钟作慈主编，ISBN 978-7-5204-4102-5）组织的自学网页。课程映射使用国家中小学智慧教育平台 2026 年 8 月 18 日更新的电子教材。
+按中国地图出版社中图版（北京版）《地理》七年级上册（钟作慈主编，ISBN 978-7-5204-4102-5）回顾课堂。课程映射以国家中小学智慧教育平台 2026 年 8 月 18 日更新的电子教材为据。
 
-## 本地使用
+## 三种全册体验
 
-在这个目录中运行 `python3 -m http.server 8765 --bind 127.0.0.1`，然后打开 `http://127.0.0.1:8765/`。Three.js 及控件已随源码提供，网页无需额外构建。
+- 默认或 `?view=recall` 从教材目录按课回顾。
+- `?view=nearby` 从一个身边现象开始。
+- `?view=fieldwork` 用两条线索核对自己的判断，可以留一句观察。
 
-## 更新内容
+它们共享 20 个条目、教材页码、实验和知识网。原课次、知识卡、实验网址继续可用。默认版延续旧学习记录，对照版各自保存进度。复习页可以导入或导出记录。
 
-- `src/content-first.js`、`src/content-later.js` 保存原有课次、知识点、互动题与探究活动。
-- `src/catalog.js` 汇总目录、实验入口和知识关系。扩充新册时新增内容模块，保持旧知识 ID 和互动题 ID；用关系连接旧知识点，以便原有链接和本机记录继续使用。
-- `src/geo-model.js` 提供二维和三维共享的教学示意数据。修改一组地形模型后，在两个视图核对比例与标签。
-- 网站通过 GitHub Pages 从 `main` 根目录发布。可在 GitHub Desktop 使用 Add Local Repository 添加本目录，提交并推送更新。之后可在仓库的 Actions / Pages 中查看部署状态。
+## 本地预览和检查
 
-学习进度、收藏和探究笔记由浏览器本机保存。可通过复习页导出或导入自己的进度。
+在仓库运行 `python3 -m http.server 8773 --bind 127.0.0.1`，打开 `http://127.0.0.1:8773/`。网页无需构建。GitHub Pages 从 `main` 根目录发布。
 
-## 素材
+使用 Node 和 Playwright 运行 `GEOLAB_ROUND=1 node tests/inquiry-browser.cjs`，分别把轮次设为 1、2、3，检查 360×640、390×844、667×335。每轮遍历三版全册，并实操积水、图例、地球仪、相册、旧知识卡、复习和弱网重试。通过 `GEOLAB_URL` 指定另一个静态站点。设置 `GEOLAB_SCREENSHOTS` 保存固定视口截图，配合 `GEOLAB_CAPTURE_ONLY=1` 可以单独截取画面。评审只看截图，交互结果以浏览器实测为准。孩子的兴趣与现实观察另行试用。
 
-- 首页塔拉河峡谷照片由 Alexkom000 拍摄，来自 [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:2025-07-13_Tara_River_Canyon_5.jpg)，许可为 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。站点使用缩放、压缩和裁切后的版本。
-- 简化地球轮廓依据 [Natural Earth 1:110m Land](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/)，公共领域，仅用于教学示意。
-- Three.js 0.187.0 及 OrbitControls 使用 [MIT 许可](vendor/three/LICENSE)。
-- 地形图层使用 [Natural Earth Gray Earth](https://www.naturalearthdata.com/downloads/50m-gray-earth/gray-earth-with-ocean-bottom/) 的陆地和海底阴影，缩小并着色。调整示意的洋流和季风路径时，可参考 `src/flow-model.js` 中的来源和限度。
+## 维护课程
 
-## 新话题制作规范
+- 教材顺序和稳定 ID 来自 `src/textbook.js`，教材条目、已有知识点和练习来自 `src/content-first.js` 与 `src/content-later.js`。
+- `src/inquiries.js` 为每课维护现实问题、回想提示、站内课文、图上比较和课外观察。
+- `src/lesson-activities.js` 维护课内活动与初始实验模式。二维、Three.js 共用 `src/geo-model.js` 中的地理模型。
+- 每课用能观察的现象开始，在原页看图、动手和解释。跨课浏览与额外练习集中在复习区。新增内容先核对教材页段，再用同一张原图验证读数、尺度和标签。
+- 手机优先请求正在看的照片，成功后最多预取一张。实景与教学示意标清，操作、画面和反馈保持同屏。
 
-1. **首屏先给看得见的东西。** 一张相关实景、地图或示意图，加一个孩子能立刻做的小动作。可用 `src/topic-views.js` 加 2–4 张有不同观察目的的图。每张图只配一句提示，手机能横滑，同时能用按钮和键盘翻图。图的来源与许可收在可展开区域。
-2. **用大白话开始。** 先问“哪一段走起来像陡坡？”，孩子操作后再引出“地形剖面图”。提示、数字、成因以及更难的挑战按需展开。观察时允许只玩、先猜或说暂时不知道。
-3. **让动作产生可核对的变化。** 换路线、标一个位置或拨一个量，控件、图和即时读数保持同屏，再请孩子用看到的东西说理由。实景照片与示意模型分别标记。
-4. **只在默认视图给两条相关知识。** 一条帮助迁移或比较，一条补当前方法。其余放在“更多联系”。去比较时传递已选地点，返回时恢复原图或原实验状态。
-5. **每次发版用手机视口验收。** 建议检查 360 × 640 和 390 × 844 竖屏，以及 667 × 335 或 844 × 390 横屏。记录孩子第一次找到动作需要多久，以及面对一张新图能否用自己的话说明看到的规律。
+## 素材记录
+
+- 塔拉河峡谷由 Alexkom000 拍摄，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 缩放和裁切。[原图](https://commons.wikimedia.org/wiki/File:2025-07-13_Tara_River_Canyon_5.jpg)
+- 雨后道路由 Paul The Writer 拍摄，CC0。[原图](https://commons.wikimedia.org/wiki/File:Waterlogged_Residential_Access_Road.jpg)
+- 地球照片 [NASA Apollo 17](https://science.nasa.gov/earth/earth-observatory/history-of-the-blue-marble/)，积雨云 [NASA ISS060-E-71360](https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?frame=71360&mission=ISS060&roll=E)，菊石 [Annie Scott / USGS](https://www.usgs.gov/media/images/fossil-ammonite)。
+- 地球轮廓与地形图层采用 Natural Earth [陆地轮廓](https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/) 与 [Gray Earth](https://www.naturalearthdata.com/downloads/50m-gray-earth/gray-earth-with-ocean-bottom/) 的缩小和着色版本。Three.js 及控件按 [MIT 许可](vendor/three/LICENSE) 随站提供。
+- 山地实景的署名见各相册。洋流和季风路径依据及教学示意的限度见 `src/flow-model.js`。

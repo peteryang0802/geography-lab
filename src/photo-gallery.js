@@ -7,63 +7,181 @@ function link(text, href) {
   return anchor;
 }
 
-export function mountPhotoGallery(host, photos, initialIndex, onChange) {
+const imageUrl = filename => new URL('../assets/gallery/' + filename, import.meta.url).href;
+
+export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedded = false, heading = '滑着看图片' } = {}) {
+  if (photos.length === 0) return () => {};
   host.innerHTML = `
-    <h2>滑着看图片</h2>
+    ${embedded ? '' : '<h2></h2>'}
     <div class="gallery-track" tabindex="0" role="region" aria-label="图片，左右滑动或用方向键"></div>
     <div class="gallery-controls">
       <button type="button" class="button" data-prev aria-label="上一张图片">← 上一张</button>
       <span role="status" aria-live="polite" data-count></span>
       <button type="button" class="button" data-next aria-label="下一张图片">下一张 →</button>
     </div>
+    <p class="gallery-right-caption" data-active-caption></p>
     <details class="gallery-sources"><summary>图片来源</summary><ul></ul></details>`;
   const track = host.querySelector('.gallery-track');
   const sources = host.querySelector('ul');
   const prev = host.querySelector('[data-prev]');
   const next = host.querySelector('[data-next]');
   const count = host.querySelector('[data-count]');
-  const slides = photos.map((photo, index) => {
+  const activeCaption = host.querySelector('[data-active-caption]');
+  if (!embedded) host.querySelector('h2').textContent = heading;
+  const bound = value => Math.max(0, Math.min(photos.length - 1, value));
+  let index = bound(Number.isInteger(initialIndex) ? initialIndex : 0);
+  let requestedIndex = null;
+  let direction = 1;
+  let frame;
+  let prefetchTimer;
+  let backgroundIndex = null;
+  let disposed = false;
+
+  const slides = photos.map((photo, photoIndex) => {
     const figure = document.createElement('figure');
     figure.className = 'gallery-slide';
+    const frame = document.createElement('div');
+    frame.className = 'gallery-frame';
     const image = document.createElement('img');
-    image.src = './assets/gallery/' + photo.file;
     image.alt = photo.alt;
-    image.loading = index === 0 ? 'eager' : 'lazy';
     image.decoding = 'async';
+    if (photo.width && photo.height) {
+      image.width = photo.width;
+      image.height = photo.height;
+    }
+    const status = document.createElement('div');
+    status.className = 'gallery-image-status';
+    const message = document.createElement('p');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'button gallery-retry';
+    retry.textContent = '重试';
+    retry.setAttribute('aria-label', '重试加载：' + photo.title);
+    status.append(message, retry);
+    frame.append(image, status);
     const caption = document.createElement('figcaption');
     const title = document.createElement('strong');
     title.textContent = photo.title;
     const cue = document.createElement('p');
     cue.textContent = photo.cue;
     caption.append(title, cue);
-    figure.append(image, caption);
+    figure.append(frame, caption);
     const credit = document.createElement('li');
     credit.append(link(photo.title, photo.source), ' · ' + photo.author + ' · ', link(...photo.license), ' · 图片已缩放或转换格式');
     sources.append(credit);
     track.append(figure);
-    return figure;
+    const slide = { photo, figure, image, caption, status, message, retry };
+    setImageState(slide, 'idle');
+    image.addEventListener('load', async () => {
+      const source = image.currentSrc;
+      try {
+        await image.decode();
+      } catch {
+        // Another candidate may have been selected while an image was decoding.
+      }
+      if (!disposed && source === image.currentSrc && image.complete && image.naturalWidth) finishPhoto(slide, photoIndex, 'loaded');
+    });
+    image.addEventListener('error', () => finishPhoto(slide, photoIndex, 'error'));
+    retry.addEventListener('click', () => requestPhoto(photoIndex, 'high', true));
+    return slide;
   });
-  let index = Math.min(initialIndex ?? 0, slides.length - 1);
-  let frame;
+
+  function setImageState(slide, state) {
+    const loaded = state === 'loaded';
+    const error = state === 'error';
+    slide.state = state;
+    slide.figure.dataset.imageState = state;
+    slide.image.style.visibility = loaded ? '' : 'hidden';
+    slide.caption.style.visibility = loaded ? '' : 'hidden';
+    slide.status.hidden = loaded;
+    slide.retry.hidden = !error;
+    slide.message.textContent = loaded ? '' : error ? '这张照片没载入。' : '照片加载中…';
+  }
+
+  function resolveSizes(slide) {
+    const width = slide.figure.clientWidth;
+    const size = `${width}px`;
+    if (width > 0 && slide.image.sizes !== size) slide.image.sizes = size;
+  }
+
+  function requestPhoto(target, priority, retry = false) {
+    const slide = slides[target];
+    if (disposed || !slide || slide.state === 'loaded' || slide.state === 'error' && !retry) return;
+    const { image, photo } = slide;
+    image.loading = 'eager';
+    image.fetchPriority = priority;
+    if (slide.state === 'loading') return;
+    if (retry && document.activeElement === slide.retry) track.focus({ preventScroll: true });
+    setImageState(slide, 'loading');
+    const suffix = retry ? '?retry=' + Date.now() : '';
+    const original = imageUrl(photo.file) + suffix;
+    if (photo.mobileFile && matchMedia('(pointer: coarse) and (max-width: 920px)').matches) {
+      image.src = imageUrl(photo.mobileFile) + suffix;
+      return;
+    }
+    if (photo.mobileFile && photo.width > 640) {
+      resolveSizes(slide);
+      image.srcset = `${imageUrl(photo.mobileFile) + suffix} 640w, ${original} ${photo.width}w`;
+    }
+    image.src = original;
+  }
+
+  function finishPhoto(slide, photoIndex, state) {
+    if (disposed) return;
+    if (backgroundIndex === photoIndex) backgroundIndex = null;
+    setImageState(slide, state);
+    updateCaption();
+    schedulePrefetch();
+  }
+
+  function updateCaption() {
+    const slide = slides[index];
+    activeCaption.textContent = slide.state === 'loaded' ? slide.photo.title + ' · ' + slide.photo.cue : '';
+  }
+
+  function schedulePrefetch() {
+    clearTimeout(prefetchTimer);
+    if (requestedIndex !== null || backgroundIndex !== null || navigator.connection?.saveData || slides[index].state !== 'loaded') return;
+    const neighbor = bound(index + direction) === index ? index - direction : index + direction;
+    if (slides[neighbor]?.state !== 'idle') return;
+    prefetchTimer = setTimeout(() => {
+      backgroundIndex = neighbor;
+      requestPhoto(neighbor, 'low');
+    }, 150);
+  }
 
   function scrollTarget(slide) {
-    const left = slides[slide].offsetLeft - slides[0].offsetLeft;
-    return Math.min(left, track.scrollWidth - track.clientWidth);
+    const left = slides[slide].figure.offsetLeft - slides[0].figure.offsetLeft;
+    return Math.min(left, Math.max(0, track.scrollWidth - track.clientWidth));
   }
 
   function update() {
     const previousIndex = index;
     const distance = slides.map((_, i) => Math.abs(track.scrollLeft - scrollTarget(i)));
     index = distance.indexOf(Math.min(...distance));
+    updateCaption();
+    for (const [position, slide] of slides.entries()) {
+      slide.message.setAttribute('aria-live', position === index ? 'polite' : 'off');
+      slide.retry.tabIndex = position === index ? 0 : -1;
+    }
+    if (requestedIndex === index) requestedIndex = null;
+    if (requestedIndex === null) requestPhoto(index, 'high');
     prev.disabled = index === 0;
     next.disabled = index === slides.length - 1;
     const label = `${index + 1} / ${slides.length}`;
     if (count.textContent !== label) count.textContent = label;
-    if (index !== previousIndex) onChange(index);
+    if (index !== previousIndex) {
+      direction = Math.sign(index - previousIndex);
+      onChange?.(index);
+    }
+    schedulePrefetch();
   }
 
   function goTo(slide, instant = false) {
-    const target = Math.max(0, Math.min(slides.length - 1, slide));
+    const target = bound(slide);
+    clearTimeout(prefetchTimer);
+    requestedIndex = target === index ? null : target;
+    requestPhoto(target, 'high');
     track.scrollTo({
       left: scrollTarget(target),
       behavior: instant || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
@@ -71,25 +189,38 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange) {
   }
 
   track.addEventListener('scroll', () => {
+    clearTimeout(prefetchTimer);
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(update);
   }, { passive: true });
-  prev.addEventListener('click', () => goTo(index - 1));
-  next.addEventListener('click', () => goTo(index + 1));
+  function startManualScroll() {
+    clearTimeout(prefetchTimer);
+    requestedIndex = null;
+  }
+  track.addEventListener('pointerdown', startManualScroll, { passive: true });
+  track.addEventListener('wheel', startManualScroll, { passive: true });
+  prev.addEventListener('click', () => goTo((requestedIndex ?? index) - 1));
+  next.addEventListener('click', () => goTo((requestedIndex ?? index) + 1));
   track.addEventListener('keydown', event => {
     if (event.target !== track) return;
-    const target = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: slides.length - 1 }[event.key];
+    const focus = requestedIndex ?? index;
+    const target = { ArrowLeft: focus - 1, ArrowRight: focus + 1, Home: 0, End: slides.length - 1 }[event.key];
     if (target === undefined) return;
     event.preventDefault();
     goTo(target);
   });
 
-  const observer = new ResizeObserver(() => goTo(index, true));
+  const observer = new ResizeObserver(() => {
+    for (const slide of slides) if (slide.image.srcset) resolveSizes(slide);
+    goTo(requestedIndex ?? index, true);
+  });
   observer.observe(track);
   goTo(index, true);
   update();
   return () => {
+    disposed = true;
     observer.disconnect();
     cancelAnimationFrame(frame);
+    clearTimeout(prefetchTimer);
   };
 }

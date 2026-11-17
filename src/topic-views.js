@@ -4,6 +4,7 @@ export const topicViews = {
     photos: [
       {
         file: 'himalayas-everest.webp',
+        mobileFile: 'himalayas-everest-640.webp', width: 1100, height: 733,
         title: '在山脚看珠穆朗玛峰',
         alt: '从绒布河谷望向珠穆朗玛峰北坡，雪和冰覆盖高处，山脚露出许多碎石。',
         cue: '从山脚往上看，哪里开始出现大片的雪和冰？',
@@ -13,6 +14,7 @@ export const topicViews = {
       },
       {
         file: 'himalayas-cho-la.webp',
+        mobileFile: 'himalayas-cho-la-640.webp', width: 1100, height: 734,
         title: '在垭口看冰川',
         alt: '从尼泊尔 Cho La 垭口向东望，近处是覆雪的冰川，周围有深色岩壁。',
         cue: '找一找：浅色的冰雪和深色的岩壁，各在画面的什么位置？',
@@ -22,6 +24,7 @@ export const topicViews = {
       },
       {
         file: 'himalayas-from-orbit.webp',
+        mobileFile: 'himalayas-from-orbit-640.webp', width: 1100, height: 731,
         title: '从太空看整列山地',
         alt: '国际空间站拍摄的斜视照片，成排的雪峰横过画面，前方是平原，远处是青藏高原。',
         cue: '试着沿着一排白色山峰移动手指。山脉和一座山峰有什么不同？',
@@ -36,6 +39,7 @@ export const topicViews = {
     photos: [
       {
         file: 'alps-aletsch.webp',
+        mobileFile: 'alps-aletsch-640.webp', width: 1000, height: 660,
         title: '瑞士阿莱奇冰川',
         alt: '白色冰流沿着两侧雪山之间的谷地弯曲。',
         cue: '沿着白色冰带看一看：山谷向哪边弯？',
@@ -45,6 +49,7 @@ export const topicViews = {
       },
       {
         file: 'alps-dolomites.webp',
+        mobileFile: 'alps-dolomites-640.webp', width: 1000, height: 660,
         title: '意大利多洛米蒂三峰',
         alt: '几座浅色岩塔直立在云雾上方。',
         cue: '从山顶往下看，哪一段岩壁最接近竖直？',
@@ -59,6 +64,7 @@ export const topicViews = {
     photos: [
       {
         file: 'cordillera-moraine.webp',
+        mobileFile: 'cordillera-moraine-640.webp', width: 1000, height: 660,
         title: '加拿大落基山脉的莫雷恩湖',
         alt: '连续的雪峰在树林和湖面后升起，湖里能看到山的倒影。',
         cue: '从湖边的树林向上看，哪里明显变陡了？',
@@ -68,6 +74,7 @@ export const topicViews = {
       },
       {
         file: 'cordillera-grand-canyon.webp',
+        mobileFile: 'cordillera-grand-canyon-640.webp', width: 1000, height: 660,
         title: '北美西部的科罗拉多大峡谷',
         alt: '红褐色的阶梯状峡谷切入较平缓的高原表面。',
         cue: '先找较平的高原顶部，再顺着两侧岩壁往谷底看。',
@@ -82,6 +89,7 @@ export const topicViews = {
     photos: [
       {
         file: 'andes-aconcagua.webp',
+        mobileFile: 'andes-aconcagua-640.webp', width: 1020, height: 629,
         title: '从南侧看阿空加瓜山',
         alt: '阿根廷安第斯山地航拍，高峰有积雪，前方有裸露的山脊和深谷。',
         cue: '白色积雪主要在哪一带？再找一条没有被雪遮住的山脊。',
@@ -91,6 +99,7 @@ export const topicViews = {
       },
       {
         file: 'andes-urubamba.webp',
+        mobileFile: 'andes-urubamba-640.webp', width: 907, height: 680,
         title: '秘鲁乌鲁班巴河谷',
         alt: '乌鲁班巴河沿山谷底部流过，岸边有道路和桥。',
         cue: '沿河找一找，桥和道路大多在山脚还是山顶？',
