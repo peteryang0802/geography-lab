@@ -1,5 +1,5 @@
 import { firstLessons } from './content-first.js';
-import { laterLessons, legendItems, projects } from './content-later.js';
+import { laterLessons, projects } from './content-later.js';
 
 const OFFICIAL_BOOK = 'https://r1-ndr.ykt.cbern.com.cn/edu_product/esp/assets/7b63faa4-c6d8-4c9d-b18b-21394da1c56e.t/zh-CN/1787023052170/transcode/image/';
 
@@ -13,7 +13,7 @@ export const chapters = [
 ];
 
 export const lessons = [...firstLessons, ...laterLessons];
-export { projects, legendItems };
+export { projects };
 
 const mountainNodes = [
   {

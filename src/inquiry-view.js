@@ -119,6 +119,10 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, transferM
     ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
     ${transferMarkup}
     ${note}
+    ${data.paper ? `<details class="inquiry-note" data-remember="inquiry-paper" data-inquiry-section="paper">
+      <summary>翻课本再找一条线索</summary>
+      <p>${escapeHtml(data.paper)}</p>
+    </details>` : ''}
     ${outsideMarkup || `<section class="inquiry-outside" data-inquiry-section="outside">
       <h2>课外观察</h2><p>${escapeHtml(data.closing)}</p>
       <p>${escapeHtml(data.outside)}</p>

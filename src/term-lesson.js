@@ -1,5 +1,5 @@
 import { escapeHtml as escape } from './inquiry-view.js?v=6';
-import { mountTermDiagram } from './term-diagram.js?v=1';
+import { mountTermDiagram } from './term-diagram.js?v=2';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);

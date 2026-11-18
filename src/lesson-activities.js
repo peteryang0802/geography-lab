@@ -53,9 +53,9 @@ const visualLoaders = {
     const { mountRainInquiry } = await import('./inquiry-visuals.js?v=6');
     return (host, _, saved, onChange, view) => mountRainInquiry(host, saved, onChange, { view: ({ recall: 'a', nearby: 'b', fieldwork: 'c' })[view] });
   },
-  world: async () => (await import('./world-inquiry.js?v=6')).mountWorldInquiry,
+  world: async () => (await import('./world-inquiry.js?v=7')).mountWorldInquiry,
   'world-check': async () => {
-    const { mountWorldCheck } = await import('./world-inquiry.js?v=6');
+    const { mountWorldCheck } = await import('./world-inquiry.js?v=7');
     return (host, lessonId, saved, onChange) => mountWorldCheck(host, inquiries[lessonId].outside, saved, onChange);
   },
   landform: async () => {

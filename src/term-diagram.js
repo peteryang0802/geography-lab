@@ -84,13 +84,15 @@ function paintMap(ctx, activity, width, height) {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  ctx.fillStyle = '#214239';
-  ctx.font = '700 12px system-ui';
-  ctx.fillText('北', width - 26, 14);
-  trace(ctx, [[width - 23, 27], [width - 23, 17], [width - 27, 22], [width - 23, 17], [width - 19, 22]]);
-  ctx.strokeStyle = '#214239';
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
+  if (activity.northArrow !== false) {
+    ctx.fillStyle = '#214239';
+    ctx.font = '700 12px system-ui';
+    ctx.fillText('北', width - 26, 14);
+    trace(ctx, [[width - 23, 27], [width - 23, 17], [width - 27, 22], [width - 23, 17], [width - 19, 22]]);
+    ctx.strokeStyle = '#214239';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
   return activity.points.map(point => project(point.x, point.y));
 }
 

@@ -39,6 +39,7 @@
 
 ## 素材记录
 
+- 图例页符号来自对应册教材附录，按印刷页 125、132、133、125 提取。各册的符号表和 WebP 对照由 `src/textbook-legend.js` 管理。
 - 塔拉河峡谷由 Alexkom000 拍摄，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 缩放和裁切。[原图](https://commons.wikimedia.org/wiki/File:2025-07-13_Tara_River_Canyon_5.jpg)
 - 雨后道路由 Paul The Writer 拍摄，CC0。[原图](https://commons.wikimedia.org/wiki/File:Waterlogged_Residential_Access_Road.jpg)
 - 地球照片 [NASA Apollo 17](https://science.nasa.gov/earth/earth-observatory/history-of-the-blue-marble/)，积雨云 [NASA ISS060-E-71360](https://eol.jsc.nasa.gov/SearchPhotos/photo.pl?frame=71360&mission=ISS060&roll=E)，菊石 [Annie Scott / USGS](https://www.usgs.gov/media/images/fossil-ammonite)。

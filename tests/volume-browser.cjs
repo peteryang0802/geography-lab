@@ -61,6 +61,14 @@ async function check(engine, name, viewport) {
       await page.locator('a[href="#/legend?term=' + book + '"]').click();
       await page.locator('[data-legend-example]').waitFor();
       assert.match(await page.locator('main').innerText(), new RegExp('课本附录 · 第 ' + appendixPages[bookIndex] + ' 页'));
+      const legend = page.locator('.book-legend');
+      assert.equal(await legend.locator('[data-legend-symbol]').count(), [25, 27, 28][bookIndex]);
+      for (const symbol of ['china-capital', 'foreign-capital', 'province-center', 'national-boundary', 'desert']) {
+        assert.equal(await legend.locator(`[data-legend-symbol="${symbol}"]`).count(), 1);
+      }
+      assert.equal(await legend.locator('[data-legend-symbol="high-speed-rail"]').count(), Number(book === '8b'));
+      assert.equal(await legend.locator('[data-legend-symbol="marsh"]').count(), Number(book === '8b'));
+      assert.equal(await legend.locator('[data-legend-symbol="airport"]').count(), Number(book !== '7b'));
       await page.locator('main a[href="#/term/' + book + '"]').first().click();
       await page.locator('[data-volume-directory="' + book + '"]').waitFor();
 

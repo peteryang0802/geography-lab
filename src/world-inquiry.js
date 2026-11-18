@@ -1,17 +1,18 @@
 import { COAST_RINGS } from './geo-model.js';
 
 const geography = [
-  ['亚洲', 48, 96, 'land'], ['欧洲', 56, 18, 'land'], ['非洲', 6, 21, 'land'],
+  ['亚洲', 48, 96, 'land'], ['欧洲', 49, 22, 'land'], ['非洲', 6, 21, 'land'],
   ['北美洲', 46, -110, 'land'], ['南美洲', -17, -61, 'land'], ['大洋洲', -24, 144, 'land'],
   ['南极洲', -78, 8, 'land'], ['太平洋', 6, -145, 'ocean'], ['大西洋', 19, -39, 'ocean'],
-  ['印度洋', -35, 71, 'ocean'], ['北冰洋', 77, -33, 'ocean'],
+  ['印度洋', -35, 71, 'ocean'], ['北冰洋', 80, -149, 'ocean'],
 ];
 
+// Shore markers use vertices of the simplified coastline drawn by paintWorld.
 const routes = {
   pacific: {
     center: 180,
-    start: [33, 122],
-    end: [39, -123],
+    start: [31.7, 121.9],
+    end: [40.3, -124.4],
     ocean: '太平洋',
     startName: '亚洲东岸',
     endName: '北美洲西岸',
@@ -20,9 +21,10 @@ const routes = {
   },
   atlantic: {
     center: -28,
-    start: [5, -4],
-    end: [-8, -35],
+    start: [14.7, -17.6],
+    end: [-7.3, -34.7],
     ocean: '大西洋',
+    oceanLabel: [-28, -10],
     startName: '非洲西岸',
     endName: '南美洲东岸',
     question: '从非洲西岸往西，去南美洲要跨过哪片海？',
@@ -210,14 +212,18 @@ export function mountWorldInquiry(host, _, saved, onChange) {
     const start = position(...route.start);
     const end = position(...route.end);
     if (state.revealed) {
-      const ocean = flightPath(context, start, end);
-      mapLabel(context, width, height, route.ocean, ...ocean, 'focus');
+      const belowFlight = flightPath(context, start, end);
+      const label = route.oceanLabel ? position(...route.oceanLabel) : belowFlight;
+      mapLabel(context, width, height, route.ocean, ...label, 'focus');
     }
     coastPoint(context, ...start);
     coastPoint(context, ...end);
     const direction = Math.sign(end[0] - start[0]);
     mapLabel(context, width, height, route.startName, start[0] - direction * 13, start[1] - 15, 'coast');
-    mapLabel(context, width, height, route.endName, end[0] + direction * 13, end[1] + (state.route === 'atlantic' ? 36 : -15), 'coast');
+    const endLabel = state.route === 'atlantic'
+      ? [end[0] - 43, end[1] + 16]
+      : [end[0] + direction * 13, end[1] - 15];
+    mapLabel(context, width, height, route.endName, ...endLabel, 'coast');
   }
 
   function update() {
@@ -285,15 +291,15 @@ export function mountWorldCheck(host, question, saved, onChange) {
   function draw() {
     drawMap(canvas, context, (width, height) => {
       const position = paintWorld(context, width, height, 77, 164, 25);
-      const start = position(-17, 39);
-      const end = position(-22, 114);
+      const start = position(-10.8, 40.5);
+      const end = position(-21.8, 114.1);
       if (selected === '印度洋') {
         mapLabel(context, width, height, '印度洋', ...flightPath(context, start, end), 'focus');
       }
       coastPoint(context, ...start);
       coastPoint(context, ...end);
       mapLabel(context, width, height, '非洲东岸', start[0] - 14, start[1] - 17, 'coast');
-      mapLabel(context, width, height, '澳大利亚', end[0] + 17, end[1] - 17, 'coast');
+      mapLabel(context, width, height, '澳大利亚西岸', end[0] + 17, end[1] - 17, 'coast');
     });
   }
 

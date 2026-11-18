@@ -471,22 +471,3 @@ export const projects = [
     links: ['trade', 'international-cooperation', 'cultural-diversity', 'settlement'],
   },
 ];
-
-export const legendItems = [
-  { id: 'capital', title: '首都或行政中心', text: '星形与同心圆是定位中心城市的示意。先读所用地图的图例，确定符号对应首都、首府或省级中心。', symbol: '★ · ◎' },
-  { id: 'settlement-dot', title: '居民点', text: '圆点代表一处聚落。专题图中大小或颜色可以代表不同的人口级别。', symbol: '●' },
-  { id: 'coastline', title: '海岸线', text: '海洋和陆地相接的位置。对着着色图例辨认哪边是海、哪边是陆。', symbol: '⌇' },
-  { id: 'river', title: '河流和水库', text: '河流常用曲线表示，水库可用面状水域来表示。使用地图时依照它自己的符号。', symbol: '≈' },
-  { id: 'seasonal-river', title: '时令河', text: '有些河流呈现季节性变化，图上可用断线与常年河流区分。', symbol: '∿ ∿' },
-  { id: 'canal', title: '运河', text: '由人工修建的通水线路。读图时结合水域与沿线城市判断去向。', symbol: '≋' },
-  { id: 'lake', title: '湖泊与湖面海拔', text: '湖泊通常呈面状。有数字注记时，先看单位、正负号和数值对应的对象。', symbol: '◒' },
-  { id: 'mountain', title: '山峰与海拔', text: '在高程点旁读以米为单位的数字。这个值指该点相对平均海平面的高程。', symbol: '▲' },
-  { id: 'volcano', title: '火山', text: '单独的火山符号会出现在地貌图或专题图上。根据该图图例与一般山峰区分。', symbol: '△' },
-  { id: 'border', title: '国界、地区界与行政区界', text: '地图会为不同类别的界线规定各自符号。核对当前地图的图例、来源及审图信息，再解释线条含义。', symbol: '· ━ ·' },
-  { id: 'railway', title: '铁路', text: '线状符号用于表示铁路线路。看地图图例区分铁路与公路。', symbol: '═╪═' },
-  { id: 'road', title: '公路和高速公路', text: '线条粗细或配色可以区分公路等级。规划线路时可以顺着道路符号逐段查看。', symbol: '━━' },
-  { id: 'reef', title: '珊瑚礁', text: '海岸和浅海专题图可单独标出珊瑚礁。先查图例，再读它和海岸的相对位置。', symbol: '◇' },
-  { id: 'great-wall', title: '长城', text: '某些地图用专门的线状符号标示长城的走向。', symbol: '▁▔▁' },
-  { id: 'airport', title: '机场', text: '航空相关的点状图标可以帮助找到机场的位置。', symbol: '✈︎' },
-  { id: 'port', title: '港口', text: '港口符号多出现在岸线旁，可以与航线或城市一起读。', symbol: '⚓︎' },
-];

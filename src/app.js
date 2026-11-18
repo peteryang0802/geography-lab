@@ -1,9 +1,10 @@
-import { lessons, projects, legendItems, concepts, getRelations, labs } from './catalog.js';
+import { lessons, projects, concepts, getRelations, labs } from './catalog.js';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js?v=5';
 import { mountPhotoGallery } from './photo-gallery.js?v=7';
 import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
+import { renderTextbookLegend } from './textbook-legend.js';
 import { createLearningStore } from './learning-state.js';
 import { inquiryViews, renderInquiry, selectInquiryView, escapeHtml as escape } from './inquiry-view.js?v=6';
 import { inquiries } from './inquiries.js?v=6';
@@ -624,11 +625,13 @@ function practice(lesson) {
 }
 
 function legend(query) {
-  const volume = volumeById.get(query.get('term'));
-  const page = (volume || volumeById.get('7a')).legendPage;
-  main.innerHTML = `${breadcrumb('常用地图图例', volume ? termUrl(volume.id) : undefined, volume?.title)}${pageIntro('常用地图图例', '先点地图上的线、符号和文字，再看看它们各在告诉你什么。', '课本附录 · 第 ' + page + ' 页')}
-    <section class="panel" data-legend-example></section>
-    <div class="grid">${legendItems.map(item => `<article class="card"><div class="legend-item"><span aria-hidden="true" class="legend-symbol">${escape(item.symbol)}</span><h3>${escape(item.title)}</h3></div><p>${escape(item.text)}</p></article>`).join('')}</div>`;
+  const volume = volumeById.get(query.get('term')) ?? volumeById.get('7a');
+  main.innerHTML = `${breadcrumb('常用地图图例', termUrl(volume.id), volume.title)}${pageIntro('常用地图图例', '认一认你这册课本里的图例，再用校园小地图试一试。', '课本附录 · 第 ' + volume.legendPage + ' 页')}
+    <section class="panel" aria-label="本册课本图例">
+      <h2>${volume.title}图例</h2>
+      ${renderTextbookLegend(volume.id)}
+    </section>
+    <section class="panel" data-legend-example aria-label="校园地图练习"></section>`;
   mountConceptExample(main.querySelector('[data-legend-example]'), { kind: 'legend' }, activeHash);
 }
 
@@ -693,7 +696,7 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const url = new URL(`./term-${id}.js?v=2${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
+    const url = new URL(`./term-${id}.js?v=3${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
       loadedVolumes.delete(id);
@@ -719,7 +722,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
       const [lessons, {renderTermLesson}] = await Promise.all([
-        loadVolume(summary.term), import('./term-lesson.js?v=1'),
+        loadVolume(summary.term), import('./term-lesson.js?v=2'),
       ]);
       if (!valid()) return;
       const entry = lessons.get(summary.id);

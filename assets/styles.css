@@ -144,8 +144,22 @@ details p { font-size: .91rem; }
 .data-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
 .data-table th, .data-table td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: right; }
 .data-table th:first-child { text-align: left; }
-.legend-item { display: flex; align-items: center; gap: 11px; }
-.legend-symbol { display: grid; place-items: center; color: var(--green); background: #e6f0e7; border-radius: 11px; min-width: 50px; min-height: 44px; font-size: 1.25rem; font-weight: 700; }
+.book-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+.book-legend-group h3 { margin: 0 0 6px; color: var(--green); }
+.book-legend-group ul { list-style: none; padding: 0; margin: 0; }
+.book-legend-group li { display: flex; align-items: center; min-height: 42px; gap: 12px; border-block-end: 1px solid var(--line); }
+.book-legend-group small { display: inline-block; color: var(--muted); }
+.book-legend-symbol {
+  display: block; flex: 0 0 90px; width: 90px; height: 35px;
+  background: var(--legend-atlas) 0 var(--legend-y) / 90px auto no-repeat;
+  filter: brightness(.9) contrast(1.45);
+}
+:is([data-legend-symbol="region-boundary"], [data-legend-symbol="military-line"],
+    [data-legend-symbol="province-boundary"]) .book-legend-symbol { filter: brightness(.83) contrast(1.65); }
+@media (max-width: 600px) {
+  .book-legend { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
 .search-box { max-width: 760px; margin-bottom: 15px; }
 .search-input { font-size: 1rem; }
 .results-label { margin-block: 12px; color: var(--muted); font-size: .92rem; }
