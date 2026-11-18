@@ -392,9 +392,9 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       const previous = samples[Math.max(0, settings.walkStep - 1)];
       const gain = point.elevation - previous.elevation;
       const slope = settings.walkStep === 0 ? '起点' : gain > 0 ? `前一段升高 ${gain} 米` : gain < 0 ? `前一段降低 ${-gain} 米` : '前一段差不多是平路';
-      host.querySelector('[data-walk-distance]').textContent = '· ' + point.distance.toFixed(1) + ' 千米';
+      host.querySelector('[data-walk-distance]').textContent = '· 水平距起点 ' + point.distance.toFixed(1) + ' 千米';
       live.textContent = `${route} · ${slope} · 脚下约 ${point.elevation} 米`;
-      reading.textContent = `侧面图的线表示沿路的高低，这就是地形剖面图。两条路在模型中都长约 9.6 千米。在当前路线，同样走约 0.8 千米，最大高差约 ${maxJump} 米。`;
+      reading.textContent = `侧面图的线表示沿路的高低，这就是地形剖面图。模型中两条剖面线的水平距离都是 9.6 千米。沿当前剖面线，每相隔 0.8 千米取一个点，相邻两点最大高差约 ${maxJump} 米。`;
     } else {
       const a = TERRAIN_SITES[settings.siteA];
       const b = TERRAIN_SITES[settings.siteB];

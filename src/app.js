@@ -1,4 +1,4 @@
-import { lessons, projects, legendItems, concepts, getRelations, labs, bookPageUrl } from './catalog.js';
+import { lessons, projects, legendItems, concepts, getRelations, labs } from './catalog.js';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js?v=5';
 import { mountPhotoGallery } from './photo-gallery.js?v=7';
@@ -633,10 +633,16 @@ function legend(query) {
 }
 
 function sources() {
+  const textbooks = [
+    ['七年级上册', '978-7-5204-4102-5', 'https://r1-ndr.ykt.cbern.com.cn/edu_product/esp/assets/7b63faa4-c6d8-4c9d-b18b-21394da1c56e.t/zh-CN/1787023052170/transcode/image/6.jpg'],
+    ['七年级下册', '978-7-5204-4112-4', 'https://r2-ndr.ykt.cbern.com.cn/edu_product/esp/assets/67970690-c47b-49e2-9246-c137bacd82fe.t/zh-CN/1772437419795/transcode/image/6.jpg'],
+    ['八年级上册', '978-7-5204-4111-7', 'https://r2-ndr.ykt.cbern.com.cn/edu_product/esp/assets/0f612d26-b797-4ac4-8de3-0f9eaf8ef27e.t/zh-CN/1787796759059/transcode/image/6.jpg'],
+    ['八年级下册', '978-7-5204-4110-0', 'https://r3-ndr.ykt.cbern.com.cn/edu_product/esp/assets/96effd81-fc72-4521-888f-07ea6866a4c9.t/zh-CN/1772437420586/transcode/image/6.jpg'],
+  ];
   main.innerHTML = `${breadcrumb('教材与素材来源')}${pageIntro('教材与素材来源', '')}
-    <section class="panel"><h2>教材</h2><p>《地理》七年级上册，中图版（北京版）。北京教育科学研究院编著，中国地图出版社出版，钟作慈主编。ISBN 978-7-5204-4102-5。</p>
-      <p>课次、页码和概念依据国家中小学智慧教育平台 2026 年 8 月 18 日更新的电子教材。网页中的问题、实验和反馈为自学设计。</p>
-      <div class="actions"><a class="button" href="https://www.ditu.cn/pub/html/dtjxw/book/dili/978-7-5204-4102-5/41025.html" target="_blank" rel="noopener">出版社电子课本 ↗</a><a class="button" href="${bookPageUrl(2)}" target="_blank" rel="noopener">国家平台目录 ↗</a></div>
+    <section class="panel"><h2>教材</h2><p>《地理》中图版（北京版），北京教育科学研究院编著，中国地图出版社出版，钟作慈主编。</p>
+      <p>四册课序与页码依据国家中小学智慧教育平台的电子教材。网页的模拟图和练习用于课前预习和课后复习。</p>
+      <ul>${textbooks.map(([title, isbn, url]) => `<li><a href="${url}" target="_blank" rel="noopener">国家平台 · ${title}目录 ↗</a> <small>ISBN ${isbn}</small></li>`).join('')}</ul>
     </section>
     <section class="panel"><h2>图片与模型</h2><p>首页摄影为 Alexkom000 的塔拉河峡谷照片。本站缩放、压缩并在首页裁切显示。</p>
       <p><a href="https://commons.wikimedia.org/wiki/File:2025-07-13_Tara_River_Canyon_5.jpg" target="_blank" rel="noopener">Wikimedia Commons 原图</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
@@ -687,7 +693,7 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const url = new URL(`./term-${id}.js?v=1${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
+    const url = new URL(`./term-${id}.js?v=2${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
       loadedVolumes.delete(id);
