@@ -1,10 +1,17 @@
 # 地理实验台
 
-按中国地图出版社中图版（北京版）《地理》七年级上册（钟作慈主编，ISBN 978-7-5204-4102-5）回顾课堂。课程映射以国家中小学智慧教育平台 2026 年 8 月 18 日更新的电子教材为据。
+按北京教育科学研究院编著、中国地图出版社出版、钟作慈主编的中图版（北京版）初中《地理》四册制作。首页选学期，课内按教材顺序做读图、观察和复习，共 68 项。新增 48 项中含 12 项主题探究。
 
-## 三种全册体验
+## 教材
 
-- 默认或 `?view=recall` 从教材目录按课回顾。
+- 七上 ISBN 978-7-5204-4102-5，采用国家智慧教育平台 2026 年 8 月 18 日更新的电子教材。[出版社电子书](https://www.ditu.cn/pub/html/dtjxw/book/dili/978-7-5204-4102-5/41025.html)
+- 七下 ISBN 978-7-5204-4112-4，2024 年 12 月第 1 版。[出版社电子书](https://www.ditu.cn/pub/html/dtjxw/book/dili/978-7-5204-4112-4/41124.html) · [国家平台](https://basic.smartedu.cn/tchMaterial/detail?catalogType=tchMaterial&contentId=67970690-c47b-49e2-9246-c137bacd82fe&contentType=assets_document&subCatalog=tchMaterial)
+- 八上 ISBN 978-7-5204-4111-7，2025 年 6 月第 1 版。[出版社电子书](https://www.ditu.cn/pub/html/dtjxw/book/dili/978-7-5204-4111-7/41117.html) · [国家平台](https://basic.smartedu.cn/tchMaterial/detail?catalogType=tchMaterial&contentId=0f612d26-b797-4ac4-8de3-0f9eaf8ef27e&contentType=assets_document&subCatalog=tchMaterial)
+- 八下 ISBN 978-7-5204-4110-0，2025 年 12 月第 1 版。[国家平台目录](https://r3-ndr.ykt.cbern.com.cn/edu_product/esp/assets/96effd81-fc72-4521-888f-07ea6866a4c9.t/zh-CN/1772437420586/transcode/image/6.jpg)
+
+## 七上原有体验
+
+- 首页选七年级上册，或打开 `?view=recall#/term/7a`，从原有目录按课回顾。
 - `?view=nearby` 从一个身边现象开始。
 - `?view=fieldwork` 用两条线索核对自己的判断，可以留一句观察。
 
@@ -18,9 +25,12 @@
 
 用 `node tests/performance-browser.cjs` 检查冷缓存弱网的图片、平面图、3D 首帧和超时重试。测线上压缩传输时将 `GEOLAB_URL` 指向 GitHub Pages。
 
+用 `node tests/volume-browser.cjs` 遍历新增三册，检查目录页码、图上读数、核对、换材料复习、主题探究草稿，以及手机竖屏、横屏与桌面的显示。
+
 ## 维护课程
 
-- 教材顺序和稳定 ID 来自 `src/textbook.js`，教材条目、已有知识点和练习来自 `src/content-first.js` 与 `src/content-later.js`。
+- 新三册使用 `src/term-7b.js`、`src/term-8a.js` 和 `src/term-8b.js`。构建时提取目录索引，进入课程时才加载该册材料。图和交互在 `src/term-diagram.js`、`src/term-lesson.js`。
+- 七上教材顺序和稳定 ID 来自 `src/textbook.js`，教材条目、已有知识点和练习来自 `src/content-first.js` 与 `src/content-later.js`。
 - `src/inquiries.js` 为每课维护现实问题、图后说明、第二个情境和课外观察。`src/transfer-illustrations.js` 为第二个情境绘制前后两幅教学示意，说明数字和事实仍保留在可读文字中。
 - `src/lesson-activities.js` 维护课内活动与初始实验模式。二维、Three.js 共用 `src/geo-model.js` 中的地理模型。
 - 修改 `src/scenes.js` 或升级 Three.js 后，运行 `sh scripts/build-three.sh` 更新随站发布的 `src/three-runtime.js`。平面图默认可操作，Three.js 在打开 3D 时加载。

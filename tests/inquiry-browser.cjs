@@ -11,7 +11,7 @@ const ids = ['intro', 'earth-space', 'spaceflight', 'earth-model', 'earth-motion
   'contours', 'project-orienteering', 'land-ocean', 'land-change', 'project-seafloor', 'weather',
   'temp-rain', 'climate', 'climate-life', 'project-nest', 'people', 'cooperation', 'project-made-in-china'];
 const { width, height } = [{ width: 360, height: 640 }, { width: 390, height: 844 }, { width: 667, height: 335 }][round - 1];
-const url = (view, hash = '#/') => new URL('?view=' + view + hash, origin).href;
+const url = (view, hash = view === 'recall' ? '#/term/7a' : '#/') => new URL('?view=' + view + hash, origin).href;
 const go = (p, hash) => p.evaluate(hash => { location.hash = hash; }, hash);
 const section = name => '[data-inquiry-section="' + name + '"]';
 

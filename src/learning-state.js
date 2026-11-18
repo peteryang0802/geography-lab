@@ -117,9 +117,11 @@ export function createLearningStore({
       if (!storage) throw new Error('storage unavailable');
       storage.setItem(key, JSON.stringify(value));
       memoryOnly.delete(key);
+      return true;
     } catch (error) {
       memoryOnly.add(key);
       onStorageError(error);
+      return false;
     }
   }
 
@@ -150,8 +152,7 @@ export function createLearningStore({
     if (group === 'answers' && state.answers[id]?.solved) value = { ...value, solved: true };
     if (group === 'visits') value = Math.max(state.visits[id] ?? 0, value);
     assignRecord(group, id, value);
-    persist(recordKey(group, id), value);
-    return true;
+    return persist(recordKey(group, id), value);
   }
 
   function setResume(lessonId, context = {}) {

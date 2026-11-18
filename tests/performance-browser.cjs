@@ -94,7 +94,7 @@ function currentImage(img) {
 
 async function checkHome(browser) {
   await coldPage(browser, undefined, async ({ page, load, elapsed, assets }) => {
-    await load('#/');
+    await load('#/term/7a');
     const image = page.locator('.inquiry-home img');
     await image.waitFor();
     const path = await (await page.waitForFunction(source => {
@@ -106,7 +106,7 @@ async function checkHome(browser) {
     const readyMs = elapsed();
     const requested = assets(/\.(png|jpg|webp|avif)(?:\?|$)/i);
     const cover = requested.find(item => item.path === path);
-    emit({ scenario: 'cold home', readyMs, cover });
+    emit({ scenario: 'cold seven-upper page', readyMs, cover });
     if (verify) {
       assert.ok(size(cover) > 0 && size(cover) <= 25 * 1024, 'The phone requested an oversized cover');
       assert.equal(cover.status, 200);

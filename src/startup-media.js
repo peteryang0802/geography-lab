@@ -21,7 +21,7 @@ if (photos?.length) {
   const savedIndex = readSavedViews(namespace).get(route)?.galleryIndex;
   const index = Number.isInteger(savedIndex) ? Math.max(0, Math.min(photos.length - 1, savedIndex)) : 0;
   preload('./assets/' + galleryAssetForViewport(photos[index]), 'preload', 'image');
-} else if (!namespace && (!route.startsWith('#/') || route === '#/')) {
+} else if (route === '#/term/7a' || namespace && (!route.startsWith('#/') || route === '#/')) {
   preload('./assets/' + photoForViewport(landscapePhoto).file, 'preload', 'image');
 } else if (route.startsWith('#/lab/') || route === '#/lesson/earth-model' || route === '#/lesson/earth-motion') {
   preload('./src/' + LAB_UI_MODULE.slice(2), 'modulepreload');

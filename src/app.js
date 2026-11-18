@@ -10,6 +10,7 @@ import { inquiries } from './inquiries.js?v=6';
 import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=6';
 import { fitActivityStage } from './activity-stage.js';
 import { LAB_UI_MODULE } from './lab-module.js';
+import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, renderCourseHub, renderVolumeDirectory } from './term-catalog.js';
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 
 const main = document.querySelector('#content');
@@ -22,13 +23,20 @@ const work = [...lessons, ...projects];
 const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
 const byConcept = new Map(concepts.map(concept => [concept.id, concept]));
 const byLab = new Map(labs.map(lab => [lab.id, lab]));
+const loadedVolumes = new Map();
+const volumeRetries = new Map();
+const globeTopics = new Map([['亚洲', 'terrain'], ['东南亚', 'circulation'], ['极地地区', 'daylight']]);
+const photoTopics = new Map([
+  ['亚洲', { gallery: 'himalayas' }], ['欧洲西部', {gallery: 'alps'}],
+  ['美国', { gallery: 'cordillera', picks: [1] }], ['青藏地区', { gallery: 'himalayas', picks: [0, 2] }],
+]);
 const exploreState = { query: '', showAll: false };
 let activeHash = '';
 let cleanup;
 let storeTimer;
 let renderVersion = 0;
 const learning = createLearningStore({
-  lessons: work, concepts, labs, activityIds, namespace: viewId === 'recall' ? '' : viewId,
+  lessons: [...work, ...extendedEntries], concepts, labs, activityIds, namespace: viewId === 'recall' ? '' : viewId,
   onStorageError: () => {
     notice.textContent = '当前浏览器无法长期保存进度，请在复习页导出。';
   },
@@ -59,8 +67,10 @@ function textbookLabel(entry) {
   return [chapter.prefix, chapter.id ? chapter.title : '', part].filter(Boolean).join(' · ');
 }
 
-function home() {
-  const recent = getTextbookPosition(state.lastLesson)?.entry;
+function sevenUpperHome() {
+  const historic = textbookEntries.filter(entry => state.visits[entry.id])
+    .sort((a, b) => state.visits[b.id] - state.visits[a.id])[0];
+  const recent = getTextbookPosition(state.lastLesson)?.entry || historic;
   const entry = recent || getTextbookPosition(viewId === 'recall' ? 'intro' : 'contours').entry;
   const title = viewId === 'recall' ? entry.title : inquiries[entry.id].question;
   const caption = viewId === 'recall' ? (recent ? '继续回顾' : '从绪论开始')
@@ -84,7 +94,8 @@ function home() {
     ${textbookDirectory(entry)}`;
 }
 
-function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entry || textbookEntries[0], standalone = false) {
+function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entry ||
+  textbookEntries.filter(entry => state.visits[entry.id]).sort((a, b) => state.visits[b.id] - state.visits[a.id])[0] || textbookEntries[0], standalone = false) {
   return `
     <section class="section book-directory" aria-label="七上课本目录">
       ${standalone ? '<div class="section-title book-title"><h1>七上课本目录</h1></div>' : sectionHeading('七上课本目录')}
@@ -347,7 +358,7 @@ function routeParts(route) {
 function acceptedOrigin(route) {
   if (typeof route !== 'string' || route.length > 1200 || !/^#\/[a-z\d/-]+(?:\?[^<>#]*)?$/i.test(route)) return null;
   const { page, id } = routeParts(route);
-  if (page === 'lesson' && byLesson.has(id) || page === 'lab' && byLab.has(id) || page === 'concept' && byConcept.has(id)) return route;
+  if (page === 'lesson' && (byLesson.has(id) || termEntryById.has(id)) || page === 'lab' && byLab.has(id) || page === 'concept' && byConcept.has(id)) return route;
   if (!id && ['review', 'explore', 'legend', 'textbook'].includes(page)) return route;
   return null;
 }
@@ -356,7 +367,7 @@ function contextReturn(from) {
   let origin = acceptedOrigin(from);
   for (let depth = 0; depth < 7 && origin; depth++) {
     const { page, id, query } = routeParts(origin);
-    if (page === 'lesson') return { href: origin, label: '返回《' + byLesson.get(id).title + '》' };
+    if (page === 'lesson') return { href: origin, label: '返回《' + (byLesson.get(id) || termEntryById.get(id)).title + '》' };
     if (page === 'lab') return { href: origin, label: '返回' + byLab.get(id).title };
     if (page === 'review') return { href: origin, label: '返回复习' };
     if (page === 'legend') return { href: origin, label: '返回图例' };
@@ -498,7 +509,8 @@ function explore() {
     aliases: concept.id === 'contour' ? '坡陡 坡缓 山坡有多陡 等高线怎么看坡度' : '',
   }));
   const combined = catalog.concat(
-    work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '课本', href: lessonUrl(lesson.id) })),
+    work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '七上课本', href: lessonUrl(lesson.id) })),
+    extendedEntries.map(lesson => ({ title: lesson.title, text: lesson.chapter, titleOfLesson: volumeById.get(lesson.term).title, href: lessonUrl(lesson.id) })),
     searchableScenes.map(scene => ({ ...scene, titleOfLesson: '转动地球仪' })),
   );
 
@@ -542,11 +554,12 @@ function explore() {
 }
 
 function review() {
-  const needsReview = work.filter(lesson => lesson.tasks.some(task => {
+  const allLessons = [...work, ...extendedEntries];
+  const needsReview = allLessons.filter(lesson => lesson.tasks.some(task => {
     const selection = state.answers[task.id]?.option;
     return Number.isInteger(selection) && selection !== task.answer;
   }));
-  const recent = work.filter(lesson => state.visits[lesson.id])
+  const recent = allLessons.filter(lesson => state.visits[lesson.id])
     .sort((a, b) => Number(state.visits[b.id]) - Number(state.visits[a.id])).slice(0, 8);
   const list = (items, empty) => items.length ? `<div class="review-list">${items.map(lesson => `<div class="review-item">
     <a href="#/practice/${lesson.id}">${escape(lesson.title)}</a><small>${doneCount(lesson)} / ${lesson.tasks.length} 题</small></div>`).join('')}</div>` : `<p class="empty">${empty}</p>`;
@@ -558,7 +571,7 @@ function review() {
         <section class="panel"><h2>最近回顾</h2>${recent.length ? '<div class="review-list">' + recent.map(lesson => `<div class="review-item"><a href="${lessonUrl(lesson.id)}">${escape(lesson.title)}</a></div>`).join('') + '</div>' : '<p class="empty">打开过的课会出现在这里。</p>'}</section>
         <section class="panel"><h2>按课练习</h2><form class="review-practice">
           <label class="field-label" for="practice-lesson">选一课</label>
-          <select id="practice-lesson" required><option value="">请选择</option>${textbookEntries.map(entry => `<option value="${entry.id}">${escape(entry.title)}</option>`).join('')}</select>
+          <select id="practice-lesson" required><option value="">请选择</option>${['7a', '7b', '8a', '8b'].map(term => `<optgroup label="${volumeById.get(term).title}">${(term === '7a' ? textbookEntries : entriesForVolume(term)).map(entry => `<option value="${entry.id}">${escape(entry.title)}</option>`).join('')}</optgroup>`).join('')}</select>
           <button class="button" type="submit">开始练习</button>
         </form></section>
       </div>
@@ -574,7 +587,7 @@ function review() {
   main.querySelector('.review-practice').addEventListener('submit', event => {
     event.preventDefault();
     const selected = main.querySelector('#practice-lesson').value;
-    if (byLesson.has(selected)) location.hash = '#/practice/' + selected;
+    if (byLesson.has(selected) || termEntryById.has(selected)) location.hash = '#/practice/' + selected;
   });
   main.querySelector('#export').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(learning.exportProgress(), null, 2)], { type: 'application/json' });
@@ -610,11 +623,13 @@ function practice(lesson) {
   bindTasks(lesson.tasks);
 }
 
-function legend() {
-  main.innerHTML = `${breadcrumb('常用地图图例')}${pageIntro('常用地图图例', '先点地图上的线、符号和文字，再看看它们各在告诉你什么。', '课本附录 · 第 125 页')}
+function legend(query) {
+  const volume = volumeById.get(query.get('term'));
+  const page = (volume || volumeById.get('7a')).legendPage;
+  main.innerHTML = `${breadcrumb('常用地图图例', volume ? termUrl(volume.id) : undefined, volume?.title)}${pageIntro('常用地图图例', '先点地图上的线、符号和文字，再看看它们各在告诉你什么。', '课本附录 · 第 ' + page + ' 页')}
     <section class="panel" data-legend-example></section>
     <div class="grid">${legendItems.map(item => `<article class="card"><div class="legend-item"><span aria-hidden="true" class="legend-symbol">${escape(item.symbol)}</span><h3>${escape(item.title)}</h3></div><p>${escape(item.text)}</p></article>`).join('')}</div>`;
-  mountConceptExample(main.querySelector('[data-legend-example]'), { kind: 'legend' }, '#/legend');
+  mountConceptExample(main.querySelector('[data-legend-example]'), { kind: 'legend' }, activeHash);
 }
 
 function sources() {
@@ -646,7 +661,7 @@ function captureView() {
     position.offset = -nearest.getBoundingClientRect().top;
   }
   learning.saveView(activeHash, position);
-  if (page === 'lesson' && byLesson.has(id)) {
+  if (page === 'lesson' && (byLesson.has(id) || termEntryById.has(id))) {
     const previous = state.positions[id];
     if (previous?.scrollY !== position.scrollY || previous?.section !== position.section || JSON.stringify(previous?.details) !== JSON.stringify(position.details)) {
       learning.setRecord('positions', id, position);
@@ -669,6 +684,87 @@ function restoreInquiryPosition(view) {
   if (section) scrollBy(0, section.getBoundingClientRect().top + (view.offset ?? 0));
 }
 
+async function loadVolume(id) {
+  if (!loadedVolumes.has(id)) {
+    const suffix = volumeRetries.get(id) || 0;
+    const url = new URL(`./term-${id}.js?v=1${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
+    const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
+      chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
+      loadedVolumes.delete(id);
+      volumeRetries.set(id, suffix + 1);
+      throw error;
+    });
+    loadedVolumes.set(id, pending);
+  }
+  return loadedVolumes.get(id);
+}
+
+function showExpandedLesson(summary, route, previous, view, version, practiceOnly) {
+  const volume = volumeById.get(summary.term);
+  const valid = () => renderVersion === version;
+  let drawing;
+  const globeMode = globeTopics.get(summary.title);
+  const photoTopic = photoTopics.get(summary.title);
+  const workbook = entriesForVolume(summary.term);
+  const following = workbook[workbook.findIndex(item => item.id === summary.id) + 1];
+
+  async function open() {
+    main.innerHTML = `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a><section class="volume-heading">
+      <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
+    try {
+      const [lessons, {renderTermLesson}] = await Promise.all([
+        loadVolume(summary.term), import('./term-lesson.js?v=1'),
+      ]);
+      if (!valid()) return;
+      const entry = lessons.get(summary.id);
+      if (!entry) throw new Error('volume entry unavailable');
+      const related = (entry.related || []).map(id => {
+        const direct = byLesson.get(id) || termEntryById.get(id);
+        if (direct) return {title: direct.title, href: lessonUrl(id)};
+        const concept = byConcept.get(id);
+        return concept ? {title: concept.title, href: conceptUrl(id, route)} : null;
+      }).find(Boolean);
+      drawing = renderTermLesson(main, {
+        entry, term: volume, next: following, related, learning, reviewOnly: practiceOnly,
+        onGlobe: globeMode ? host => {
+          const globe = byLab.get('globe');
+          const key = 'lesson-' + entry.id;
+          const params = new URLSearchParams({mode: globeMode});
+          return mountLearningLab(host, globe, params, state.labs[key], key,
+            {inline: true, fixedMode: globeMode, origin: route}, () => valid() && host.isConnected);
+        } : undefined,
+        onPhotos: photoTopic ? host => {
+          const topic = topicViews[photoTopic.gallery];
+          const photos = photoTopic.picks ? photoTopic.picks.map(index => topic.photos[index]) : topic.photos;
+          return mountPhotoGallery(host, photos, learning.getView(route)?.galleryIndex,
+            index => learning.saveView(route, {galleryIndex: index}), {embedded: true});
+        } : undefined,
+      });
+      if (!practiceOnly) {
+        learning.recordVisit(summary.id);
+        const context = previous ? routeParts(previous) : null;
+        if (context?.page !== 'concept' && context?.page !== 'lab') {
+          learning.setResume(summary.id, {route, scrollY: view?.scrollY || 0});
+        }
+      }
+      restoreView(view);
+      document.title = entry.title + ' · 地理实验台';
+      if (practiceOnly) main.querySelector('[data-term-review]')?.scrollIntoView({block: 'start'});
+      else if (view?.section) restoreInquiryPosition(view);
+      else if (view?.scrollY) scrollTo(0, view.scrollY);
+    } catch (error) {
+      if (!valid()) return;
+      console.warn('Volume activity could not be loaded', summary.id, error);
+      main.innerHTML = `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a><section class="panel">
+        <h1>${escape(summary.title)}</h1><p role="status">这节课的材料没载入。${summary.page ? '可先翻课本第 ' + summary.page + ' 页。' : ''}</p>
+        <button type="button" class="button primary" data-volume-retry>重新加载这一课</button></section>`;
+      main.querySelector('[data-volume-retry]').addEventListener('click', () => location.reload(), {once: true});
+    }
+  }
+  open();
+  cleanup = () => { drawing?.(); };
+}
+
 function render() {
   const next = location.hash.startsWith('#/') ? location.hash : '#/';
   const previous = activeHash;
@@ -681,16 +777,26 @@ function render() {
   learning.refresh();
   const { page, id, query } = routeParts(next);
   const lesson = page === 'lesson' ? byLesson.get(id) : null;
-  const view = learning.getView(next) ?? (lesson ? state.positions[id] : null);
+  const expanded = ['lesson', 'practice'].includes(page) ? termEntryById.get(id) : null;
+  const volume = page === 'term' ? volumeById.get(id) : null;
+  const view = learning.getView(next) ?? (lesson || expanded && page === 'lesson' ? state.positions[id] : null);
   document.documentElement.dataset.learningRoute = page;
   const activeTab = page === 'explore' || page === 'concept' ? 'explore' : page === 'review' || page === 'practice' ? 'review' : 'home';
   for (const link of document.querySelectorAll('[data-nav]')) {
-    if (link.dataset.nav === 'home') link.textContent = page === 'lesson' ? '‹ 课本目录' : '课本';
+    if (link.dataset.nav === 'home') {
+      link.textContent = lesson ? '‹ 课本目录' : '课本';
+      link.href = lesson || viewId !== 'recall' ? '#/textbook' : '#/';
+    }
     if (link.dataset.nav === activeTab) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  if (!page) main.innerHTML = home();
-  else if (page === 'textbook') main.innerHTML = textbookDirectory(undefined, true);
+  if (!page) {
+    const recent = termEntryById.get(state.lastLesson) || getTextbookPosition(state.lastLesson)?.entry;
+    main.innerHTML = viewId === 'recall' ? renderCourseHub(recent) : sevenUpperHome();
+  } else if (page === 'textbook') main.innerHTML = textbookDirectory(undefined, true);
+  else if (volume?.id === '7a') main.innerHTML = '<a class="volume-back" href="#/">← 四册目录</a>' + sevenUpperHome();
+  else if (volume) main.innerHTML = renderVolumeDirectory(volume, state);
+  else if (expanded) showExpandedLesson(expanded, next, previous, view, version, page === 'practice');
   else if (lesson) {
     showLesson(lesson, view);
     const cameFrom = previous ? routeParts(previous) : null;
@@ -733,17 +839,21 @@ function render() {
     explore();
   } else if (page === 'review') review();
   else if (page === 'practice' && byLesson.has(id)) practice(byLesson.get(id));
-  else if (page === 'legend') legend();
+  else if (page === 'legend') legend(query);
   else if (page === 'sources') sources();
   else main.innerHTML = `${pageIntro('这个页面没有找到', '可以从课本目录重新出发。')}<a class="button primary" href="#/textbook">打开课本</a>`;
   restoreView(view);
   const heading = main.querySelector('h1');
-  document.title = heading ? heading.textContent + ' · 地理实验台' : '地理实验台 · 七年级上册';
+  document.title = heading ? heading.textContent + ' · 地理实验台' : '地理实验台 · 四册';
   scrollTo(0, view?.scrollY || 0);
   requestAnimationFrame(() => {
     if (activeHash !== next) return;
     if (lesson && view?.section) restoreInquiryPosition(view);
     else if (view?.scrollY) scrollTo(0, view.scrollY);
+    const prior = previous ? termEntryById.get(routeParts(previous).id) : null;
+    if (volume && prior?.term === volume.id) {
+      main.querySelector(`[data-volume-entry="${prior.id}"]`)?.focus({preventScroll: true});
+    }
   });
 }
 window.addEventListener('scroll', () => {
