@@ -682,6 +682,14 @@ body { background: var(--inquiry-paper); }
   .inquiry-home-image { height: clamp(80px, 25vw, 149px); }
   [data-lab-kind="contour"] .flat-host { height: clamp(219px, 41svh, 305px); }
 }
+@media (max-width: 520px) {
+  [data-inquiry-view="recall"][data-learning-route="term"] .inquiry-home {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  }
+  [data-inquiry-view="recall"][data-learning-route="term"] .inquiry-home-image { height: auto; }
+  [data-inquiry-view="recall"][data-learning-route="term"] .inquiry-home h1 { font-size: clamp(1.2rem, 5.7vw, 1.8rem); }
+  [data-inquiry-view="recall"][data-learning-route="term"] .home-entry { padding: 8px 10px; gap: 6px; }
+}
 @media (max-height: 500px) and (orientation: landscape) {
   [data-lab-kind="contour"] .flat-host { height: clamp(123px, 43svh, 190px); }
   .inquiry-visual .inquiry-figure canvas { max-height: none; }

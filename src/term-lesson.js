@@ -1,5 +1,5 @@
 import { escapeHtml as escape } from './inquiry-view.js?v=6';
-import { mountTermDiagram } from './term-diagram.js?v=2';
+import { mountTermDiagram } from './term-diagram.js?v=3';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -37,11 +37,12 @@ function alignTermBoard(host, control, feedback) {
     const height = Math.min(innerHeight, window.visualViewport?.height || Infinity);
     const controlBox = control.getBoundingClientRect();
     const resultBox = feedback.getBoundingClientRect();
-    const drawingBox = host.querySelector('.term-figure')?.getBoundingClientRect();
+    const drawingBox = host.querySelector('.term-plot, .term-bars')?.getBoundingClientRect();
     const begin = Math.min(drawingBox?.top ?? controlBox.top, controlBox.top);
     const end = Math.max(drawingBox?.bottom ?? resultBox.bottom, resultBox.bottom, controlBox.bottom);
-    const lowerBound = end - height + 8;
-    const upperBound = begin - 8;
+    const inset = Math.min(8, Math.max(0, Math.floor((height - (end - begin)) / 2)));
+    const lowerBound = end - height + inset;
+    const upperBound = begin - inset;
     const shift = lowerBound <= upperBound
       ? Math.max(lowerBound, Math.min(upperBound, 0))
       : Math.max(0, Math.min(resultBox.bottom - height + 8, controlBox.top - 8));
@@ -93,8 +94,8 @@ function projectMarkup(entry, saved) {
   if (!entry.project) return '';
   return `<details class="term-fold" data-remember="project-brief">
     <summary>写下我的探究方案</summary>
-    <label for="term-project-note">我会去看什么？哪条证据能支持我的想法？</label>
-    <textarea id="term-project-note" maxlength="2000" rows="3" placeholder="写一条计划或观察……">${escape(saved || '')}</textarea>
+    <label for="term-project-note">${escape(entry.projectGuide)}</label>
+    <textarea id="term-project-note" maxlength="2000" rows="3" placeholder="先记一条，随时回来接着写。">${escape(saved || '')}</textarea>
     <p class="term-note-status" role="status">草稿留在当前浏览器。</p>
     <button type="button" class="button term-note-download" data-term-download>下载我的记录</button>
   </details>`;
@@ -122,6 +123,11 @@ function projectBinding(root, entry, learning) {
 
 export function renderTermLesson(root, { entry, term, next, related, learning, reviewOnly, onGlobe, onPhotos }) {
   const activity = entry.activity;
+  const records = dataFor(activity);
+  const hasReadings = records.length >= 2 && records.every(point => Number.isFinite(point.value));
+  const comparison = entry.comparison;
+  const canCompare = hasReadings || Boolean(comparison);
+  const compareLabel = hasReadings ? '对照两个读数' : '在图上选两处';
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
@@ -133,11 +139,15 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       <details class="term-anchor" data-remember="term-paper"><summary>${lessonPage}</summary><p>${escape(entry.anchor || entry.title)}</p></details>
     </header>
     <section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation">
+      <div class="term-board-tools">
+        <p>${activity.kind === 'chart' ? '点条形，看读数。' : '点图上的字母读图。'}</p>
+        ${canCompare ? `<button type="button" class="button" data-term-compare aria-expanded="false" aria-controls="term-compare-panel">${compareLabel}</button>` : ''}
+      </div>
       <figure class="term-figure">
         ${activity.kind === 'chart' ? chartMarkup(activity) : plotMarkup(activity)}
         <figcaption>${escape(activity.caption || '教学示意')}${activity.kind === 'profile' ? ' · 横向位置为示意' : ''}</figcaption>
       </figure>
-      <div class="term-controls">
+      <div class="term-controls" data-term-prediction>
         <h2>${escape(activity.prompt)}</h2>
         <div class="term-choices" role="group" aria-label="先猜一猜">
           ${activity.choices.map((choice, index) => `<button type="button" class="button" data-term-choice="${index}" aria-pressed="false">${escape(choice.label)}</button>`).join('')}
@@ -146,11 +156,16 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
         <p class="term-feedback" role="status" data-term-feedback></p>
         <button type="button" class="button primary" data-term-see>看图核对</button>
       </div>
+      ${canCompare ? `<div class="term-controls" id="term-compare-panel" data-term-comparison hidden>
+        <h2>${escape(comparison?.prompt || '点图上的两个标记，看看相差多少。')}</h2>
+        <p class="term-feedback" role="status" data-term-compare-result></p>
+        <button type="button" class="button" data-term-compare-reset hidden>清空重选</button>
+      </div>` : ''}
     </section>
     ${canGlobe ? '<details class="term-fold" data-term-globe><summary>用地球仪看位置和地形</summary><div data-term-globe-stage></div></details>' : ''}
     ${onPhotos ? '<details class="term-fold" data-term-photos data-remember="term-photos"><summary>看这一带的实景照片</summary><div class="photo-gallery" data-term-gallery></div></details>' : ''}
     ${projectMarkup(entry, learning.state.notes[entry.id])}
-    <details class="term-fold term-takeaway"><summary>用一句话连回课本</summary><p>${escape(entry.takeaway)}</p></details>
+    <p class="term-takeaway"><strong>用一句话记住</strong> ${escape(entry.takeaway)}</p>
     <details class="term-fold term-review" data-term-review data-inquiry-section="term-review" ${reviewOnly ? 'open' : ''}>
       <summary>换份材料复习</summary>
       <h2>${escape(entry.review.prompt)}</h2>
@@ -167,25 +182,74 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   </article>`;
 
   const host = root.querySelector('.term-station');
-  const records = dataFor(activity);
   const figure = host.querySelector('figure');
   const panel = host.querySelector('[data-term-feedback]');
   const show = host.querySelector('[data-term-see]');
   const buttons = [...host.querySelectorAll('[data-term-choice]')];
   const saved = learning.state.widgets[entry.id];
+  const compareToggle = host.querySelector('[data-term-compare]');
+  const comparePanel = host.querySelector('[data-term-comparison]');
+  const compareResult = host.querySelector('[data-term-compare-result]');
+  const compareReset = host.querySelector('[data-term-compare-reset]');
+  let comparing = canCompare && saved?.comparing === true;
+  let picks = Array.isArray(saved?.picks) ? [...new Set(saved.picks)]
+    .filter(index => Number.isInteger(index) && records[index]).slice(0, 2) : [];
   let choice = saved?.choice === '?' || Number.isInteger(saved?.choice) && activity.choices[saved.choice] ? saved.choice : null;
   let revealed = saved?.revealed === true;
   const chartButtons = [...figure.querySelectorAll('[data-bar], [data-key]')];
   let diagram;
-  function highlight(indices) {
-    diagram?.select(indices, revealed);
-    chartButtons.forEach((button, index) => button.classList.toggle('mark-selected', indices.includes(index)));
+  function highlight(indices, showFlows = revealed) {
+    diagram?.select(indices, showFlows);
+    chartButtons.forEach((button, index) => {
+      const selected = indices.includes(index);
+      button.classList.toggle('mark-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  }
+  function paintComparison() {
+    if (!compareToggle) return;
+    compareToggle.setAttribute('aria-expanded', String(comparing));
+    compareToggle.textContent = comparing ? '回到猜想' : compareLabel;
+    comparePanel.hidden = !comparing;
+    host.querySelector('[data-term-prediction]').hidden = comparing;
+    if (!comparing) return;
+    highlight(picks, false);
+    compareReset.hidden = picks.length === 0;
+    if (picks.length === 0) {
+      compareResult.textContent = '先选一处。';
+      return;
+    }
+    const [first, second] = picks.map(index => records[index]);
+    if (!second) {
+      compareResult.textContent = '已选「' + first.label + '」，再选一处。';
+      return;
+    }
+    const evidence = comparison
+      ? (comparison.pairs.some(pair => pair.every(index => picks.includes(index))) ? comparison.feedback : comparison.again)
+      : '';
+    if (hasReadings) {
+      const difference = Number(Math.abs(first.value - second.value).toFixed(2));
+      const unit = activity.unit ? ' ' + activity.unit : '';
+      compareResult.textContent = first.label + ' ' + first.value + unit + ' · ' + second.label + ' ' + second.value + unit +
+        '。相差 ' + difference + unit + '。' + evidence;
+      return;
+    }
+    compareResult.textContent = evidence;
   }
   function inspect(index, control) {
+    if (comparing) {
+      picks = picks.includes(index) ? picks.filter(pick => pick !== index) : [...picks.slice(-1), index];
+      if (picks.length === 2) learning.markCompleted(entry.id);
+      save();
+      paintComparison();
+      alignTermBoard(host, control, compareResult);
+      return;
+    }
     const point = records[index];
     highlight([index]);
     panel.textContent = point.value === undefined ? '你找到的是「' + point.label + '」。再看看它与其他标记的位置关系。' :
       '你读到「' + point.label + '」为 ' + point.value + (activity.unit ? ' ' + activity.unit : '') + '。';
+    if (revealed) learning.markCompleted(entry.id);
     alignTermBoard(host, control, panel);
   }
   function paint() {
@@ -204,25 +268,43 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     show.textContent = '重新猜一次';
   }
   function save() {
-    learning.setRecord('widgets', entry.id, {choice, revealed});
+    learning.setRecord('widgets', entry.id, {choice, revealed, comparing, picks});
   }
+  compareToggle?.addEventListener('click', () => {
+    comparing = !comparing;
+    save();
+    if (!comparing) paint();
+    paintComparison();
+    alignTermBoard(host, compareToggle, comparing ? compareResult : show);
+  });
+  compareReset?.addEventListener('click', () => {
+    picks = [];
+    save();
+    paintComparison();
+    chartButtons[0]?.focus({preventScroll:true});
+  });
   for (const button of buttons) {
     button.addEventListener('click', () => {
       choice = button.dataset.termChoice === '?' ? '?' : Number(button.dataset.termChoice);
-      if (revealed) learning.markCompleted(entry.id);
+      if (revealed && choice !== '?') learning.markCompleted(entry.id);
       save();
       paint();
       if (revealed) alignTermBoard(host, button, panel);
     });
   }
   show.addEventListener('click', () => {
+    if (choice === null && !revealed) {
+      panel.textContent = '先选一个想法。没想好也可以点「还不确定」。';
+      alignTermBoard(host, show, panel);
+      return;
+    }
     if (revealed) {
       choice = null;
       revealed = false;
       show.textContent = '看图核对';
     } else {
       revealed = true;
-      learning.markCompleted(entry.id);
+      if (choice !== '?') learning.markCompleted(entry.id);
     }
     save();
     paint();
@@ -231,6 +313,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   chartButtons.forEach((button, index) => button.addEventListener('click', () => inspect(index, button)));
   if (activity.kind !== 'chart') diagram = mountTermDiagram(figure, activity, inspect);
   paint();
+  paintComparison();
   bindReview(root, entry, learning);
   projectBinding(root, entry, learning);
 

@@ -33,6 +33,7 @@
 .volume-chapter a:hover { text-decoration: underline; }
 .volume-chapter a > span { overflow-wrap: anywhere; }
 .volume-chapter a > small { flex: 0 0 auto; font-size: .74rem; }
+.volume-chapter a[aria-current] { color: #164835; background: #e3efe2; font-weight: 730; }
 .term-lesson { max-width: 1000px; }
 .term-intro { margin: 0 0 12px; }
 .term-bookname { color: var(--muted); font-size: .83rem; margin: 0 0 5px; }
@@ -44,6 +45,10 @@
   display: grid; align-items: start; gap: clamp(8px, 2vw, 16px); min-width: 0;
   border-radius: 16px; border: 1px solid var(--line); padding: clamp(8px, 2vw, 16px); background: var(--paper);
 }
+.term-board-tools { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 5px 8px; flex-wrap: wrap; }
+.term-board-tools p { color: var(--muted); font-size: .85rem; }
+.term-board-tools .button { padding: 6px 10px; font-size: .85rem; }
+.term-board-tools .button[aria-expanded="true"] { color: #163c42; border-color: #58808c; background: #d8e9eb; }
 .term-figure { min-width: 0; margin: 0; }
 .term-figure figcaption { color: var(--muted); font-size: .72rem; margin: 5px 2px 0; line-height: 1.35; }
 .term-plot { position: relative; aspect-ratio: 2.12; border-radius: 9px; border: 1px solid #a6b8a4; background: #e7eddc; }
@@ -82,6 +87,7 @@
 .term-choices { display: flex; flex-wrap: wrap; justify-content: start; gap: 5px; }
 .term-choices .button { padding: 5px 9px; font-size: .82rem; text-align: left; white-space: normal; min-width: 0; }
 .term-controls .button[data-term-see] { justify-self: start; }
+.term-controls .button[data-term-compare-reset] { justify-self: start; padding: 5px 9px; font-size: .82rem; }
 .term-feedback { border-inline-start: 3px solid #65895d; background: #e6eee3; border-radius: 5px; color: var(--ink); font-size: .86rem; line-height: 1.36; padding: 6px 9px; }
 .term-feedback:empty { display: none; }
 .term-fold {
@@ -100,6 +106,8 @@
   border-radius: 7px; padding: 8px; margin: 0 0 6px; resize: vertical;
 }
 .term-fold .term-note-status { font-size: .80rem; color: var(--muted); margin-bottom: 4px; }
+.term-takeaway { margin: 12px 0; padding: 3px 2px 3px 10px; border-inline-start: 2px solid #a6b89e; font-size: .93rem; }
+.term-takeaway strong { color: var(--green); margin-inline-end: .25em; }
 .term-next { margin-top: 12px; }
 @media (min-width: 650px) {
   .volume-cards, .volume-chapters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -113,7 +121,7 @@
   .term-bar { min-height: 32px; }
 }
 @media (max-height: 480px) and (orientation: landscape) {
-  .term-station { padding: 7px; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
+  .term-station { padding: 7px; gap: 6px 10px; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
   .term-plot { max-height: 143px; }
   .term-lesson .term-intro { margin-bottom: 7px; }
   .term-lesson .term-intro h1 { font-size: clamp(1.37rem, 4vw, 2rem); }
@@ -136,3 +144,7 @@
 .term-key:hover { text-decoration: underline; text-underline-offset: 2px; }
 .term-point:hover span { box-shadow: 0 0 0 2px #325b4750; }
 [data-extended-lesson="8b-regional-division"] .term-keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (pointer: coarse) {
+  .term-key { min-height: 36px; }
+  .term-bar { min-height: 40px; }
+}

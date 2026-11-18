@@ -50,7 +50,7 @@ function paintWorld(ctx, width, height, project) {
   }
 }
 
-function paintMap(ctx, activity, width, height) {
+function paintMap(ctx, activity, width, height, selected) {
   const realCoast = activity.area === 'world';
   const project = realCoast ? worldFrame(activity, width, height) :
     (x, y) => [14 + x * (width - 28) / 100, 12 + y * (height - 24) / 100];
@@ -72,8 +72,9 @@ function paintMap(ctx, activity, width, height) {
     trace(ctx, points);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = tones[path.tone] || '#667e61';
-    ctx.lineWidth = path.tone === 'water' ? 3 : 2;
+    const highlighted = path.evidencePair?.every(index => selected.includes(index));
+    ctx.strokeStyle = highlighted ? '#823e1b' : tones[path.tone] || '#667e61';
+    ctx.lineWidth = highlighted ? 4 : path.tone === 'water' ? 3 : 2;
     const closed = path.coords.length > 3 && path.coords[0].every((value, i) => value === path.coords.at(-1)[i]);
     if (closed && (path.tone === 'water' || path.tone === 'land')) {
       ctx.closePath();
@@ -147,8 +148,14 @@ export function mountTermDiagram(figure, activity, onPick) {
   const canvas = stage?.querySelector('canvas');
   if (!canvas) return () => {};
   const points = [...stage.querySelectorAll('[data-plot-point]')];
+  const highlightsPath = activity.paths?.some(path => path.evidencePair);
   let selected = [];
   let revealed = false;
+  function markSelection(button, index) {
+    const picked = selected.includes(index);
+    button.classList.toggle('mark-selected', picked);
+    button.setAttribute('aria-pressed', String(picked));
+  }
   function draw() {
     const { width, height } = stage.getBoundingClientRect();
     if (!width || !height) return;
@@ -158,7 +165,7 @@ export function mountTermDiagram(figure, activity, onPick) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const positions = activity.kind === 'map' ? paintMap(ctx, activity, width, height) :
+    const positions = activity.kind === 'map' ? paintMap(ctx, activity, width, height, selected) :
       paintProfile(ctx, activity, width, height, revealed);
     for (const [index, button] of points.entries()) {
       const [x, y] = positions[index];
@@ -166,7 +173,7 @@ export function mountTermDiagram(figure, activity, onPick) {
       button.style.left = handleX + 'px';
       button.style.top = handleY + 'px';
       button.hidden = false;
-      button.classList.toggle('mark-selected', selected.includes(index));
+      markSelection(button, index);
       if (x !== handleX || y !== handleY) {
         trace(ctx, [[x, y], [handleX, handleY]]);
         ctx.strokeStyle = '#365e4e';
@@ -183,11 +190,11 @@ export function mountTermDiagram(figure, activity, onPick) {
   return {
     select(values, showEvidence) {
       selected = values;
-      if (activity.flows && revealed !== showEvidence) {
+      if (highlightsPath || activity.flows && revealed !== showEvidence) {
         revealed = showEvidence;
         draw();
       }
-      points.forEach((button, index) => button.classList.toggle('mark-selected', selected.includes(index)));
+      points.forEach(markSelection);
     },
     dispose() {
       resize?.disconnect();

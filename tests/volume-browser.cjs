@@ -117,6 +117,28 @@ async function check(engine, name, viewport) {
       await page.locator('.volume-resume').waitFor();
       assert.match(await page.locator('.volume-resume').innerText(), new RegExp(entries.at(-1).title));
     }
+    await go('#/lesson/8a-water');
+    const water = page.locator('[data-extended-lesson="8a-water"]');
+    const compare = water.locator('[data-term-compare]');
+    const compareResult = water.locator('[data-term-compare-result]');
+    await compare.click();
+    await water.locator('[data-bar]').nth(1).click();
+    assert.match(await compareResult.innerText(), /再选一处/);
+    await water.locator('[data-bar]').nth(2).click();
+    assert.match(await compareResult.innerText(), /相差 18 单位.*春季缺口/);
+    await page.reload();
+    await water.waitFor();
+    assert.equal(await compare.getAttribute('aria-expanded'), 'true');
+    assert.equal(await compare.innerText(), '回到猜想');
+    assert.match(await compareResult.innerText(), /相差 18 单位/);
+    await water.locator('[data-term-compare-reset]').click();
+    assert.equal(await water.locator('[data-bar][aria-pressed="true"]').count(), 0);
+    await compare.click();
+    assert.ok(await water.locator('[data-term-see]').isVisible());
+    await water.locator('.volume-back').click();
+    const waterEntry = page.locator('[data-volume-entry="8a-water"]');
+    assert.equal(await waterEntry.getAttribute('aria-current'), 'location');
+    await page.waitForFunction(() => document.activeElement?.dataset.volumeEntry === '8a-water');
     assert.deepEqual(failures, []);
     assert.deepEqual(tallBoards, []);
     assert.ok(fetched.every(url => !/\/three-runtime\.js/.test(url)));
