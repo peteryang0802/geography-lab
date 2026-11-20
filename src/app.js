@@ -15,6 +15,7 @@ import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, 
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } from './reading-practice.js';
 import { bindLessonFlow } from './lesson-flow.js?v=1';
+import { mountParentSettings } from './parent-settings.js';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -38,6 +39,7 @@ let activeHash = '';
 let cleanup;
 let storeTimer;
 let renderVersion = 0;
+let resettingLearning = false;
 const learning = createLearningStore({
   lessons: [...work, ...extendedEntries], concepts, labs,
   activityIds: [...activityIds, ...work.map(lesson => lesson.id + '-reading-practice')],
@@ -701,7 +703,7 @@ function sources() {
 
 
 function captureView() {
-  if (!activeHash) return;
+  if (!activeHash || resettingLearning) return;
   const { page, id } = routeParts(activeHash);
   const details = Array.from(main.querySelectorAll('details[data-remember]'), element => [element.dataset.remember, element.open]);
   const nearest = page === 'lesson' && Array.from(main.querySelectorAll('[data-inquiry-section]'))
@@ -937,6 +939,11 @@ window.addEventListener('scroll', () => {
   storeTimer = setTimeout(captureView, 200);
 }, { passive: true });
 window.addEventListener('pagehide', captureView);
+window.addEventListener('parent-learning-reset', event => {
+  if (event.detail?.subject !== 'geography') return;
+  resettingLearning = event.detail.phase === 'start';
+  if (resettingLearning) clearTimeout(storeTimer);
+});
 document.querySelector('.skip').addEventListener('click', event => {
   event.preventDefault();
   main.focus();
@@ -944,5 +951,22 @@ document.querySelector('.skip').addEventListener('click', event => {
 window.addEventListener('hashchange', () => {
   render();
   main.focus({ preventScroll: true });
+});
+mountParentSettings({
+  subject: 'geography',
+  label: '地理',
+  entry: document.querySelector('[data-parent-settings-entry]'),
+  visible() {
+    const [route] = location.hash.split('?');
+    return ['', '#/', '#/textbook'].includes(route) || /^#\/term\/(7a|7b|8a|8b)$/.test(route);
+  },
+  localKeys: ['geography-lab:learning:v1'],
+  localPrefixes: ['geography-lab:learning:v2:'],
+  sessionKeys: ['geography-lab:views:v1', 'geography-lab:views:v1:nearby', 'geography-lab:views:v1:fieldwork'],
+  sessionPrefixes: [],
+  onReload() {
+    history.replaceState(history.state, '', location.pathname + location.search);
+    location.reload();
+  },
 });
 render();

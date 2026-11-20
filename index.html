@@ -11,7 +11,8 @@
   <!-- startup-media --><script>(()=>{var r={himalayas:[{file:"himalayas-everest.webp",mobileFile:"himalayas-everest-640.webp"},{file:"himalayas-cho-la.webp",mobileFile:"himalayas-cho-la-640.webp"},{file:"himalayas-from-orbit.webp",mobileFile:"himalayas-from-orbit-640.webp"}],alps:[{file:"alps-aletsch.webp",mobileFile:"alps-aletsch-640.webp"},{file:"alps-dolomites.webp",mobileFile:"alps-dolomites-640.webp"}],cordillera:[{file:"cordillera-moraine.webp",mobileFile:"cordillera-moraine-640.webp"},{file:"cordillera-grand-canyon.webp",mobileFile:"cordillera-grand-canyon-640.webp"}],andes:[{file:"andes-aconcagua.webp",mobileFile:"andes-aconcagua-640.webp"},{file:"andes-urubamba.webp",mobileFile:"andes-urubamba-640.webp"}]};var l=["src/geo-model.js","src/flow-model.js","src/relief-image.js?v=5","src/flat.js?v=7","src/activity-stage.js"];var d="./lab-ui.js?v=8";function k(e){try{return globalThis[e]??null}catch{return null}}function v(e,t){try{return JSON.parse(e?.getItem(t)??"null")}catch{return null}}var A=e=>!!(e&&typeof e=="object"&&!Array.isArray(e));var O=e=>typeof e=="string"&&e.length<480&&/^#\/[a-z\d/-]*(?:\?[^<>"']*)?$/i.test(e),L=e=>"geography-lab:views:v1"+(e?":"+e:"");function m(e,t=k("sessionStorage")){let i=new Map,s=v(t,L(e));if(Array.isArray(s))for(let o of s.slice(-48))Array.isArray(o)&&O(o[0])&&A(o[1])&&i.set(o[0],o[1]);return i}var u={file:"landscape-small.webp",width:640,height:426,phone:{file:"landscape-mobile.webp",width:520,height:165}};function h(e,t=document.documentElement.clientWidth){return t<=700&&e.phone?{...e,...e.phone,variants:void 0}:e}function S(e,t){return"gallery/"+e.file.replace(/\.webp$/,`-${t}.webp`)}function w(e,t=document.documentElement.clientWidth,i=window.devicePixelRatio||1){return e.mobileFile?t<=700?S(e,480):t<=1040||i<1.5?"gallery/"+e.mobileFile:"gallery/"+e.file:"gallery/"+e.file}function a(e,t,i){let s=document.createElement("link");s.rel=t,i&&(s.as=i),s.href=e,s.fetchPriority="high",document.head.append(s)}var[n]=location.hash.split("?"),c=new URLSearchParams(location.search).get("view"),b=c==="nearby"||c==="fieldwork"?c:"",g=n.match(/^#\/concept\/([a-z-]+)$/)?.[1],f=Object.hasOwn(r,g)?r[g]:void 0;if(f?.length){let e=m(b).get(n)?.galleryIndex,t=Number.isInteger(e)?Math.max(0,Math.min(f.length-1,e)):0;a("./assets/"+w(f[t]),"preload","image")}else if(n==="#/term/7a"||b&&(!n.startsWith("#/")||n==="#/"))a("./assets/"+h(u).file,"preload","image");else if(n.startsWith("#/lab/")||n==="#/lesson/earth-model"||n==="#/lesson/earth-motion"){a("./src/"+d.slice(2),"modulepreload");for(let e of l)a("./"+e,"modulepreload")}})();</script><!-- /startup-media -->
   <link rel="stylesheet" href="./assets/styles.css?v=9">
   <link rel="stylesheet" href="./assets/terms.css?v=5">
-  <script type="module" src="./src/app-runtime.js?v=fddbf15cca"
+  <link rel="stylesheet" href="./assets/parent-settings.css?v=1">
+  <script type="module" src="./src/app-runtime.js?v=e92890e371"
     onerror="document.querySelector('[data-course-hub]').hidden = true; document.querySelector('[data-startup-error]').hidden = false"></script>
 </head>
 <body>
@@ -49,6 +50,7 @@
   <footer class="site-footer">
     <div class="wrap footer-inner">
       <span>地理实验台 · 中图北京版 初中地理四册</span>
+      <span data-parent-settings-entry></span>
     </div>
   </footer>
   <div id="announcement" class="visually-hidden" role="status" aria-live="polite"></div>
