@@ -98,7 +98,7 @@ function oceanLifeFigure() {
   </figure>`;
 }
 
-export function renderInquiry({ entry, textbook, data, activityMarkup, transferMarkup, outsideMarkup, footer, note, viewId }) {
+export function renderInquiry({ entry, textbook, data, activityMarkup, practiceMarkup, transferMarkup, outsideMarkup, footer, note, viewId }) {
   const view = inquiryViews[viewId];
   const visualReading = data.visualReading;
   const photo = evidencePhotos[entry.id];
@@ -113,10 +113,12 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, transferM
       <h1>${escapeHtml(entry.title)}</h1>
       <h2>${escapeHtml(data.question)}</h2>
       <p>${escapeHtml(data.guess)}</p>
+      ${practiceMarkup ? '<button class="button lesson-practice-jump" type="button" data-lesson-practice-jump aria-controls="lesson-inline-practice">去做本课小题 ↓</button>' : ''}
     </header>
     ${evidence}
     ${viewId === 'nearby' && photo ? illustration : ''}
     ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
+    ${practiceMarkup}
     ${transferMarkup}
     ${note}
     ${data.paper ? `<details class="inquiry-note" data-remember="inquiry-paper" data-inquiry-section="paper">

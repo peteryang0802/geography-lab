@@ -50,8 +50,11 @@ export function renderVolumeDirectory(volume, state, returning) {
     ${first ? `<a class="button primary volume-resume" href="${entryUrl(first.id)}"><span><small>${returning || recent ? '继续读本册' : '从本册第一课开始'}</small><strong>${escape(first.title)}</strong></span>${nextArrow}</a>` : ''}
     <div class="volume-chapters">${(index[volume.id] || []).map(chapter => `<section class="volume-chapter"><h2>${escape(chapter.title)}</h2>
       <ul>${chapter.lessons.map(entry => {
-        const progress = state.answers['review-' + entry.id]?.solved ? '已复习 · '
-          : state.completed[entry.id] ? '已对照 · ' : state.visits[entry.id] ? '看过 · ' : '';
+        const widget = state.widgets[entry.id];
+        const evidence = widget?.proof?.result || widget?.profilePractice?.mainEvidence;
+        const review = state.answers['review-' + entry.id];
+        const progress = evidence === 'independent' ? '独立找过证据 · ' : evidence === 'guided' ? '核对后找到证据 · '
+          : review?.solved ? '换材料曾答对 · ' : state.visits[entry.id] ? '看过 · ' : '';
         return `<li><a href="${entryUrl(entry.id)}" data-volume-entry="${entry.id}" ${entry.id === (returning || recent)?.id ? 'aria-current="location"' : ''}>
           <span>${escape(entry.title)}${entry.project ? '<small> · 主题探究</small>' : ''}</span>
           <small>${progress}${entry.page ? '第 ' + entry.page + ' 页' : ''}</small></a></li>`;

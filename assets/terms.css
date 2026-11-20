@@ -1,4 +1,33 @@
 [hidden] { display: none !important; }
+.lesson-inline-practice {
+  margin-block: 18px;
+  padding: 0 14px 12px;
+  max-width: 860px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.lesson-inline-practice > summary, .lesson-practice-transfer > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--green);
+  font-weight: 700;
+  cursor: pointer;
+}
+.lesson-practice-jump { margin-top: 6px; }
+.lesson-reading-practice { padding-block: 8px 12px; border-block-end: 1px solid var(--line); }
+.lesson-reading-practice h3 { margin: 0 0 8px; line-height: 1.34; font-size: 1.03rem; font-weight: 700; }
+.reading-evidence-buttons, .term-proof-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.reading-evidence-buttons .button[aria-pressed="true"] {
+  background: var(--soft);
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+.lesson-reading-feedback { margin: 4px 0 0; }
+.lesson-reading-feedback:empty { display: none; }
+.lesson-inline-practice [data-task-source]:focus { outline: 2px solid var(--green); outline-offset: 3px; }
+.term-proof .button, .term-review [data-term-review-source], .term-review [data-term-review-back] { min-height: 44px; }
+.term-proof-guide { margin: 0; font-size: .87rem; }
+.term-proof [data-term-proof-transfer] { justify-self: start; }
 .volume-home { max-width: 910px; padding-top: clamp(7px, 3.8vh, 44px); }
 .volume-heading { margin-bottom: 17px; }
 .volume-heading p:not(.eyebrow) { margin-top: 6px; color: var(--muted); max-width: 38em; }

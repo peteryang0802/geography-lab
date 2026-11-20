@@ -13,6 +13,7 @@ import { fitActivityStage } from './activity-stage.js';
 import { LAB_UI_MODULE } from './lab-module.js';
 import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, renderCourseHub, renderVolumeDirectory } from './term-catalog.js';
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
+import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } from './reading-practice.js';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -37,7 +38,9 @@ let cleanup;
 let storeTimer;
 let renderVersion = 0;
 const learning = createLearningStore({
-  lessons: [...work, ...extendedEntries], concepts, labs, activityIds, namespace: viewId === 'recall' ? '' : viewId,
+  lessons: [...work, ...extendedEntries], concepts, labs,
+  activityIds: [...activityIds, ...work.map(lesson => lesson.id + '-reading-practice')],
+  namespace: viewId === 'recall' ? '' : viewId,
   onStorageError: () => {
     notice.textContent = '当前浏览器无法长期保存进度，请在复习页导出。';
   },
@@ -112,8 +115,10 @@ function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entr
 
 function chapterLink(entry, currentId) {
   const prefix = entry.kind === 'project' ? '探究 · ' : entry.section ? `第 ${entry.section} 节 · ` : '';
-  const worked = !!state.completed[entry.id] || doneCount(byLesson.get(entry.id)) > 0;
-  const progress = worked ? '已对照 · ' : state.visits[entry.id] ? '看过 · ' : '';
+  const evidence = state.activities[entry.id + '-reading-practice']?.outcome;
+  const progress = evidence === 'independent' ? '独立找过证据 · ' : evidence === 'guided' ? '核对后找到证据 · '
+    : doneCount(byLesson.get(entry.id)) > 0 ? '练习曾答对 · ' : state.completed[entry.id] ? '做过观察 · '
+      : state.visits[entry.id] ? '看过 · ' : '';
   return `<a class="chapter-row" data-volume-entry="${entry.id}" ${entry.kind === 'project' ? 'data-project' : ''} ${entry.id === currentId ? 'aria-current="location"' : ''} href="${lessonUrl(entry.id)}"><span>${prefix}${escape(entry.title)}</span><span>${progress}第 ${entry.page} 页</span></a>`;
 }
 
@@ -126,17 +131,19 @@ function relationshipLinks(ids, origin, explanations) {
   }).join('');
 }
 
-function taskHtml(task, index) {
+function taskHtml(task, index, inline = false) {
   const selected = state.answers[task.id]?.option;
   const active = Number.isInteger(selected) && task.options[selected];
   const correct = selected === task.answer;
   return `<article class="task" data-task="${escape(task.id)}">
     <header><span aria-hidden="true">${String(index + 1).padStart(2, '0')}</span><h3 id="task-${escape(task.id)}">${escape(task.prompt)}</h3></header>
-    ${task.evidence ? `<p class="evidence">${escape(task.evidence)}</p>` : ''}
+    ${task.evidence ? `<p class="evidence"${inline ? ' tabindex="-1" data-task-source' : ''}>${escape(task.evidence)}</p>` : ''}
+    ${inline && task.evidence ? '<button type="button" class="button" data-task-return hidden>继续刚才的小题 ↓</button>' : ''}
     <div class="options" role="group" aria-labelledby="task-${escape(task.id)}">
       ${task.options.map((option, i) => `<button type="button" class="option ${i === selected && !correct ? 'try-again' : ''}" aria-pressed="${i === selected}" data-option="${i}"><span class="option-letter" aria-hidden="true">${String.fromCharCode(65 + i)}</span>${escape(option.label)}</button>`).join('')}
     </div>
     <p class="feedback ${active && !correct ? 'try-again' : ''}" aria-live="polite" ${active ? '' : 'hidden'}>${active ? escape((correct ? '找对了。' : '再看看。') + task.options[selected].feedback) : ''}</p>
+    ${inline && task.evidence ? `<button type="button" class="button" data-task-revisit ${active ? '' : 'hidden'}>回看这题的材料 ↑</button>` : ''}
     ${task.hint ? `<details data-remember="hint-${escape(task.id)}"><summary>看看提示</summary><p>${escape(task.hint)}</p></details>` : ''}
   </article>`;
 }
@@ -147,6 +154,21 @@ function bindTasks(tasks) {
     if (!element) continue;
     const options = [...element.querySelectorAll('[data-option]')];
     const feedback = element.querySelector('.feedback');
+    const source = element.querySelector('[data-task-source]');
+    const reopen = element.querySelector('[data-task-revisit]');
+    const returnToTask = element.querySelector('[data-task-return]');
+    function moveFocus(target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+    reopen?.addEventListener('click', () => {
+      returnToTask.hidden = false;
+      moveFocus(source);
+    });
+    returnToTask?.addEventListener('click', () => {
+      const selection = options.find(button => button.getAttribute('aria-pressed') === 'true');
+      moveFocus(selection || options[0]);
+    });
     for (const button of options) {
       button.addEventListener('click', () => {
         const option = Number(button.dataset.option);
@@ -161,10 +183,14 @@ function bindTasks(tasks) {
         feedback.textContent = (correct ? '找对了。' : '再看看。') + task.options[option].feedback;
         feedback.classList.toggle('try-again', !correct);
         feedback.hidden = false;
+        if (reopen) {
+          reopen.hidden = false;
+          if (feedback.getBoundingClientRect().bottom > innerHeight - 8) feedback.scrollIntoView({ block: 'nearest' });
+        }
         const progress = main.querySelector('[data-task-count]');
         if (progress) {
           const completed = tasks.filter(item => state.answers[item.id]?.solved === true).length;
-          progress.textContent = completed === tasks.length ? '本课已完成' : `已解开 ${completed} / ${tasks.length} 题`;
+          progress.textContent = `曾答对 ${completed} / ${tasks.length} 道练习题`;
         }
       });
     }
@@ -221,14 +247,36 @@ function showLesson(lesson, storedView) {
   const position = getTextbookPosition(lesson.id);
   const data = inquiries[lesson.id];
   const activities = lessonActivities[lesson.id];
+  const proofKey = lesson.id + '-reading-practice';
+  const plan = lessonReadingPractice(lesson, data);
+  const tasks = lesson.tasks.slice(0, 2);
+  const practiceMarkup = `<details id="lesson-inline-practice" class="lesson-inline-practice" data-remember="lesson-practice"
+      data-inquiry-section="lesson-practice" ${state.activities[proofKey] || tasks.some(task => state.answers[task.id]) ? 'open' : ''}>
+      <summary>做一做本课小题</summary>
+      ${renderReadingPractice(plan, state.activities[proofKey])}
+      ${taskHtml(tasks[0], 0, true)}
+      <details class="lesson-practice-transfer" data-remember="lesson-practice-transfer" ${state.answers[tasks[1].id] ? 'open' : ''}>
+        <summary>换份材料再用一次</summary>${taskHtml(tasks[1], 1, true)}
+      </details>
+    </details>`;
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
     activityMarkup: activityMarkup(lesson, activities.filter(activity => !activity.placement)),
+    practiceMarkup,
     transferMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'transfer')),
     outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
     footer: lessonNavigation(position), note: lessonNote(lesson, data),
   });
   learning.recordVisit(lesson.id);
+  main.querySelector('[data-lesson-practice-jump]').addEventListener('click', () => {
+    const practice = main.querySelector('#lesson-inline-practice');
+    practice.open = true;
+    const heading = practice.querySelector('summary');
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+  });
+  bindReadingPractice(main, plan, state.activities[proofKey], value => learning.setRecord('activities', proofKey, value));
+  bindTasks(tasks);
   const note = main.querySelector('#project-note');
   note?.addEventListener('input', () => learning.setRecord('notes', lesson.id, note.value));
 
@@ -625,7 +673,7 @@ function review() {
 function practice(lesson) {
   main.innerHTML = `${breadcrumb(lesson.title, '#/review', '复习')}
     ${pageIntro(lesson.title, '用刚才学过的方法想一想。', '按课练习')}
-    <section class="panel">${lesson.tasks.map(taskHtml).join('')}</section>`;
+    <section class="panel">${lesson.tasks.map((task, index) => taskHtml(task, index)).join('')}</section>`;
   bindTasks(lesson.tasks);
 }
 
@@ -728,7 +776,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a><section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=4', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=5', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
