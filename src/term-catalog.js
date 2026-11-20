@@ -26,14 +26,17 @@ export function renderVolumeCards() {
     </a>`).join('')}</section>`;
 }
 
-export function renderCourseHub(recent) {
+export function renderCourseHub(recent, challengeEntry = '') {
   return `<section class="volume-home" data-course-hub>
     <div class="volume-heading"><p class="eyebrow">中图版（北京版）</p>
       <h1>今天想弄明白什么？</h1>
       <p>课前带一个问题去读图。课后换份材料，再用一次学过的方法。</p>
     </div>
-    ${recent ? `<a class="button primary volume-resume" href="${entryUrl(recent.id)}"><span><small>继续上次 · ${volumeById.get(recent.term || '7a').title}</small><strong>${escape(recent.title)}</strong></span>${nextArrow}</a>`
-      : `<a class="button primary volume-resume" href="${entryUrl('intro')}"><span><small>从上学路开始</small><strong>雨停了，为什么只有这儿留着水洼？</strong></span>${nextArrow}</a>`}
+    <div class="contour-challenge-actions">
+      ${recent ? `<a class="button primary volume-resume" href="${entryUrl(recent.id)}"><span><small>继续上次 · ${volumeById.get(recent.term || '7a').title}</small><strong>${escape(recent.title)}</strong></span>${nextArrow}</a>`
+        : `<a class="button primary volume-resume" href="${entryUrl('intro')}"><span><small>从上学路开始</small><strong>雨停了，为什么只有这儿留着水洼？</strong></span>${nextArrow}</a>`}
+      ${challengeEntry}
+    </div>
     ${renderVolumeCards()}
   </section>`;
 }

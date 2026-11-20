@@ -26,6 +26,45 @@ const timer = (page) => page.locator('[data-challenge-clock]');
 const selectedFeedback = (page) => page.locator('[data-challenge-feedback]');
 const score = (page) => page.locator('.contour-challenge-rail > p > span').textContent();
 const current = (page) => page.locator('.contour-challenge-rail [aria-current="step"]').textContent();
+const challengeEntry = (page) => page.getByRole('link', { name: /课后闯关\s*《等高线与路线选择》/ });
+
+async function firstScreenEntry(page) {
+  const entry = challengeEntry(page);
+  await entry.waitFor({ state: 'visible' });
+  assert.equal(await page.locator('[data-contour-challenge-entry]').count(), 1);
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  const box = await entry.boundingBox();
+  assert.ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1280 && box.y + box.height <= 720);
+  assert.equal(await entry.evaluate(link => link.classList.contains('primary')), false);
+  return entry;
+}
+
+async function directoryEntries(page, questions) {
+  await page.goto(base);
+  assert.equal(new URL(page.url()).hash, '');
+  await page.locator('.volume-resume.primary').waitFor();
+  await (await firstScreenEntry(page)).click();
+  await action(page, 'start').click();
+  await option(page, questions[0].answer).click();
+  await action(page, 'next').click();
+  const homeReturn = page.getByRole('link', { name: /返回首页/ });
+  await homeReturn.click();
+  await page.waitForFunction(() => document.activeElement?.matches('[data-contour-challenge-entry]'));
+  assert.equal(new URL(page.url()).hash, '#/');
+  assert.equal(await page.locator('.volume-resume.primary').getAttribute('href'), '#/lesson/intro');
+
+  await page.getByRole('link', { name: /七年级上册\s*从地球仪出发/ }).click();
+  await page.locator('.home-entry.primary').waitFor();
+  assert.equal(new URL(page.url()).hash, '#/term/7a');
+  await (await firstScreenEntry(page)).click();
+  await diagram(page).waitFor();
+  assert.match(await current(page), /读线上的海拔/);
+  assert.equal(await score(page), '1 / 10 分');
+  await page.reload();
+  await page.getByRole('link', { name: /返回七上目录/ }).click();
+  await page.waitForFunction(() => document.activeElement?.matches('[data-contour-challenge-entry]'));
+  assert.equal(new URL(page.url()).hash, '#/term/7a');
+}
 
 async function flow(page, questions) {
   await page.goto(base + course);
@@ -151,6 +190,7 @@ async function directReturn(page) {
   }
   const browser = await chromium.launch({ executablePath: process.env.GEOLAB_CHROME || undefined });
   try {
+    await hold(browser, page => directoryEntries(page, questions));
     await hold(browser, page => flow(page, questions));
     await hold(browser, page => expiry(page, questions));
     await hold(browser, directReturn);

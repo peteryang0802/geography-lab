@@ -91,6 +91,13 @@ function textbookLabel(entry) {
   return [chapter.prefix, chapter.id ? chapter.title : '', part].filter(Boolean).join(' · ');
 }
 
+function contourChallengeEntry(origin) {
+  const href = origin === lessonUrl('contours') ? contourChallengeRoute :
+    contourChallengeRoute + '?from=' + encodeURIComponent(origin);
+  return `<a class="button contour-challenge-entry" data-contour-challenge-entry href="${escape(href)}">
+    <span><strong>课后闯关</strong><small>《等高线与路线选择》</small></span>${arrow}</a>`;
+}
+
 function sevenUpperHome(current) {
   const historic = textbookEntries.filter(entry => state.visits[entry.id])
     .sort((a, b) => state.visits[b.id] - state.visits[a.id])[0];
@@ -109,7 +116,10 @@ function sevenUpperHome(current) {
         <p class="eyebrow">中图版（北京版） · 七年级上册</p>
         <h1 id="hero-title">${inquiryView.homeTitle}</h1>
         <p>${inquiryView.homeDescription}</p>
-        <a class="button primary home-entry" data-volume-entry="${entry.id}" aria-current="location" href="${lessonUrl(entry.id)}"><span><small>${caption}</small><strong>${escape(title)}</strong></span>${arrow}</a>
+        <div class="contour-challenge-actions">
+          <a class="button primary home-entry" data-volume-entry="${entry.id}" aria-current="location" href="${lessonUrl(entry.id)}"><span><small>${caption}</small><strong>${escape(title)}</strong></span>${arrow}</a>
+          ${contourChallengeEntry(activeHash)}
+        </div>
       </div>
       <figure class="inquiry-home-image">
         ${homePhoto}
@@ -122,7 +132,7 @@ function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entr
   textbookEntries.filter(entry => state.visits[entry.id]).sort((a, b) => state.visits[b.id] - state.visits[a.id])[0] || textbookEntries[0], standalone = false, featured) {
   return `
     <section class="section book-directory" aria-label="七上课本目录">
-      ${standalone ? '<div class="section-title book-title"><h1>七上课本目录</h1></div>' : sectionHeading('七上课本目录')}
+      ${standalone ? `<div class="section-title book-title"><h1>七上课本目录</h1>${contourChallengeEntry(activeHash)}</div>` : sectionHeading('七上课本目录')}
       <div class="book-chapters">${textbookChapters.filter(chapter => chapter.entries.some(entry => entry.id !== featured)).map(chapter => `
         <details class="chapter book-chapter" data-remember="chapter-${chapter.id}" ${current.chapter === chapter.id ? 'open' : ''}>
           <summary><span>${escape(chapter.prefix)}</span><strong>${escape(chapter.title)}</strong></summary>
@@ -276,8 +286,6 @@ function showLesson(lesson, storedView) {
   const plan = lessonReadingPractice(lesson, data);
   const tasks = activeTasks(lesson);
   const route = activeHash;
-  const challengeHref = route === lessonUrl(lesson.id) ? contourChallengeRoute :
-    contourChallengeRoute + '?from=' + encodeURIComponent(route);
   const practices = [renderReadingPractice(plan, state.activities[proofKey]), ...tasks.map((task, index) => taskHtml(task, index, true, index === 1 ? lesson.id : undefined))];
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
@@ -286,7 +294,7 @@ function showLesson(lesson, storedView) {
     practices,
     transferMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'transfer')),
     outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
-    footer: (lesson.id === 'contours' ? `<p class="contour-challenge-entry"><a class="button" data-contour-challenge-entry href="${escape(challengeHref)}">闯一关 · 等高线与路线选择</a></p>` : '') + lessonNavigation(position),
+    footer: (lesson.id === 'contours' ? `<div class="contour-challenge-actions">${contourChallengeEntry(route)}</div>` : '') + lessonNavigation(position),
     note: lessonNote(lesson, data),
   });
   learning.recordVisit(lesson.id);
@@ -440,6 +448,19 @@ function acceptedOrigin(route) {
   return null;
 }
 
+function contourChallengeReturn(query) {
+  const supplied = query.get('from');
+  if (supplied === '#/') return { href: supplied, label: '返回首页' };
+  const valid = acceptedOrigin(supplied);
+  const path = supplied?.split('?')[0];
+  const fromSevenUpper = path === termUrl('7a') && /^#\/term\/7a(?:\?[^<>#]*)?$/.test(supplied);
+  if (fromSevenUpper || path === '#/textbook' && valid) {
+    return { href: supplied, label: '返回七上目录' };
+  }
+  const lesson = lessonUrl('contours');
+  return { href: path === lesson && valid ? valid : lesson, label: '返回《地形图的判读》' };
+}
+
 function courseReturn(query, id) {
   const route = acceptedOrigin(query.get('from'));
   if (!route) return null;
@@ -487,11 +508,7 @@ function renderNavigation(page, id, query, lessonTerm) {
   } else if (page === 'term' || page === 'textbook') back = { href: '#/', label: '四册目录' };
   else if (page === 'concept') back = contextReturn(query.get('from'));
   else if (page === 'practice') back = { href: '#/review', label: '返回复习' };
-  else if (page === 'challenge' && id === 'contours') {
-    const origin = acceptedOrigin(query.get('from'));
-    const href = origin?.split('?')[0] === lessonUrl(id) ? origin : lessonUrl(id);
-    back = { href, label: '返回《地形图的判读》' };
-  }
+  else if (page === 'challenge' && id === 'contours') back = contourChallengeReturn(query);
   else if (page === 'legend') {
     const term = volumeById.get(query.get('term'))?.id ?? '7a';
     back = { href: termUrl(term), label: '本册目录' };
@@ -1095,7 +1112,7 @@ function render() {
   renderNavigation(page, id, query, lessonTerm);
   if (!page) {
     const recent = termEntryById.get(state.lastLesson) || getTextbookPosition(state.lastLesson)?.entry;
-    main.innerHTML = viewId === 'recall' ? renderCourseHub(recent) : sevenUpperHome();
+    main.innerHTML = viewId === 'recall' ? renderCourseHub(recent, contourChallengeEntry(activeHash)) : sevenUpperHome();
   } else if (page === 'textbook') main.innerHTML = textbookDirectory(priorInVolume || undefined, true);
   else if (volume?.id === '7a') main.innerHTML = sevenUpperHome(priorInVolume);
   else if (volume) main.innerHTML = renderVolumeDirectory(volume, state, priorInVolume);
@@ -1134,7 +1151,7 @@ function render() {
       current?.scrollIntoView({block: 'nearest'});
       current?.focus({preventScroll: true});
     }
-    if (lesson?.id === 'contours' && previous.split('?')[0] === contourChallengeRoute) {
+    if (previous.split('?')[0] === contourChallengeRoute && contourChallengeReturn(routeParts(previous).query).href === next) {
       const entry = main.querySelector('[data-contour-challenge-entry]');
       if (entry && !entry.closest('[hidden]')) {
         entry.scrollIntoView({ block: 'nearest' });
