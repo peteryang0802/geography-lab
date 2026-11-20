@@ -14,7 +14,7 @@ import { LAB_UI_MODULE } from './lab-module.js';
 import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, renderCourseHub, renderVolumeDirectory } from './term-catalog.js';
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } from './reading-practice.js';
-import { bindLessonFlow } from './lesson-flow.js?v=2';
+import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=3';
 import { alignedPractice, alignedTransfer } from './lesson-practice-transfer.js?v=1';
 import { mountParentSettings } from './parent-settings.js';
 
@@ -62,14 +62,16 @@ const arrow = '<span aria-hidden="true">→</span>';
 const doneCount = lesson => lesson.tasks.filter(task => state.answers[task.id]?.solved === true).length;
 const sectionHeading = (title, text = '', extra = '') => '<div class="section-title"><div><h2>' + title + '</h2>' + (text ? '<p>' + text + '</p>' : '') + '</div>' + extra + '</div>';
 
-function breadcrumb(title, from = '#/textbook', fromLabel = '课本目录') {
-  return `<div class="breadcrumbs"><a href="${escape(from)}">${escape(fromLabel)}</a><span aria-hidden="true">/</span><span>${escape(title)}</span></div>`;
-}
-
 function pageIntro(title, description, eyebrow = '', extraClass = '') {
   return `<div class="page-intro ${extraClass}">${eyebrow ? `<p class="eyebrow">${escape(eyebrow)}</p>` : ''}<h1>${escape(title)}</h1>${description ? `<p>${escape(description)}</p>` : ''}</div>`;
 }
 
+function utilityFlow(intro, steps, railTitle) {
+  main.innerHTML = `<article class="geo-lesson geo-extra-learning">${intro}${lessonFlow(steps, railTitle)}</article>`;
+  const route = activeHash;
+  return bindLessonFlow(main, learning.getView(route)?.flowStep,
+    flowStep => learning.saveView(route, { flowStep }));
+}
 
 function textbookLabel(entry) {
   const { chapter } = getTextbookPosition(entry.id);
@@ -95,24 +97,24 @@ function sevenUpperHome(current) {
         <p class="eyebrow">中图版（北京版） · 七年级上册</p>
         <h1 id="hero-title">${inquiryView.homeTitle}</h1>
         <p>${inquiryView.homeDescription}</p>
-        <a class="button primary home-entry" href="${lessonUrl(entry.id)}"><span><small>${caption}</small><strong>${escape(title)}</strong></span>${arrow}</a>
+        <a class="button primary home-entry" data-volume-entry="${entry.id}" aria-current="location" href="${lessonUrl(entry.id)}"><span><small>${caption}</small><strong>${escape(title)}</strong></span>${arrow}</a>
       </div>
       <figure class="inquiry-home-image">
         ${homePhoto}
       </figure>
     </section>
-    ${textbookDirectory(entry)}`;
+    ${textbookDirectory(entry, false, entry.id)}`;
 }
 
 function textbookDirectory(current = getTextbookPosition(state.lastLesson)?.entry ||
-  textbookEntries.filter(entry => state.visits[entry.id]).sort((a, b) => state.visits[b.id] - state.visits[a.id])[0] || textbookEntries[0], standalone = false) {
+  textbookEntries.filter(entry => state.visits[entry.id]).sort((a, b) => state.visits[b.id] - state.visits[a.id])[0] || textbookEntries[0], standalone = false, featured) {
   return `
     <section class="section book-directory" aria-label="七上课本目录">
       ${standalone ? '<div class="section-title book-title"><h1>七上课本目录</h1></div>' : sectionHeading('七上课本目录')}
-      <div class="book-chapters">${textbookChapters.map(chapter => `
+      <div class="book-chapters">${textbookChapters.filter(chapter => chapter.entries.some(entry => entry.id !== featured)).map(chapter => `
         <details class="chapter book-chapter" data-remember="chapter-${chapter.id}" ${current.chapter === chapter.id ? 'open' : ''}>
           <summary><span>${escape(chapter.prefix)}</span><strong>${escape(chapter.title)}</strong></summary>
-          <div class="chapter-entries">${chapter.entries.map(entry => chapterLink(entry, current.id)).join('')}</div>
+          <div class="chapter-entries">${chapter.entries.filter(entry => entry.id !== featured).map(entry => chapterLink(entry, current.id)).join('')}</div>
         </details>`).join('')}
         <a class="chapter chapter-row book-appendix" href="#/legend"><span>附录 · 常用地图图例</span><span>第 125 页</span></a>
       </div>
@@ -382,7 +384,7 @@ async function mountInquiryActivity(host, lesson, activity, key, session, stored
   }
 }
 
-async function mountLearningLab(host, lab, params, saved, key, options, isActive) {
+async function mountLearningLab(host, lab, params, saved, key, options, isActive, onSettings) {
   const route = activeHash;
   const { mountLabUI } = await import(LAB_UI_MODULE);
   if (!isActive()) return;
@@ -390,6 +392,7 @@ async function mountLearningLab(host, lab, params, saved, key, options, isActive
   const dispose = mountLabUI(host, lab, params, saved, settings => {
     learning.saveView(route, { labState: settings });
     if (mounted) learning.setRecord('labs', key, settings);
+    onSettings?.(settings);
   }, options);
   mounted = true;
   return dispose;
@@ -413,7 +416,7 @@ function courseReturn(query, id) {
   const route = acceptedOrigin(query.get('from'));
   if (!route) return null;
   const origin = routeParts(route);
-  return origin.page === 'lesson' && origin.id !== id ? route : null;
+  return origin.page === 'lesson' && origin.id === id ? null : route;
 }
 
 function contextReturn(from) {
@@ -422,6 +425,7 @@ function contextReturn(from) {
     const { page, id, query } = routeParts(origin);
     if (page === 'lesson') return { href: origin, label: '返回《' + (byLesson.get(id) || termEntryById.get(id)).title + '》' };
     if (page === 'lab') return { href: origin, label: '返回' + byLab.get(id).title };
+    if (page === 'concept') return { href: origin, label: '返回《' + byConcept.get(id).title + '》' };
     if (page === 'review') return { href: origin, label: '返回复习' };
     if (page === 'legend') return { href: origin, label: '返回图例' };
     if (page === 'textbook') return { href: origin, label: '返回课本目录' };
@@ -429,6 +433,50 @@ function contextReturn(from) {
     origin = acceptedOrigin(query.get('from'));
   }
   return { href: '#/explore', label: '返回知识网' };
+}
+
+function labReturn(lab, query) {
+  const direct = acceptedOrigin(query.get('returnTo'));
+  if (direct) return contextReturn(direct);
+  const originCard = byConcept.get(query.get('fromConcept') || '');
+  if (originCard) {
+    const cardUrl = conceptUrl(originCard.id);
+    const suppliedCard = acceptedOrigin(query.get('fromCard'));
+    return { href: suppliedCard?.startsWith(cardUrl + '?from=') ? suppliedCard : cardUrl, label: '返回' + originCard.title };
+  }
+  if (query.get('fromGlobe') === 'terrain') return { href: labUrl('globe', { mode: 'terrain' }), label: '返回地球仪' };
+  const back = byLesson.get(query.get('from')) || byLesson.get(lab.lessonId);
+  return back ? { href: lessonUrl(back.id), label: '返回《' + back.title + '》' }
+    : { href: '#/textbook', label: '返回课本目录' };
+}
+
+function renderNavigation(page, id, query, lessonTerm) {
+  let back;
+  if (lessonTerm) {
+    const origin = courseReturn(query, id);
+    back = origin ? { href: origin, label: routeParts(origin).page === 'lesson' ? '回原课' : contextReturn(origin).label }
+      : { href: termUrl(lessonTerm), label: '本册目录' };
+  } else if (page === 'term' || page === 'textbook') back = { href: '#/', label: '四册目录' };
+  else if (page === 'concept') back = contextReturn(query.get('from'));
+  else if (page === 'practice') back = { href: '#/review', label: '返回复习' };
+  else if (page === 'legend') {
+    const term = volumeById.get(query.get('term'))?.id ?? '7a';
+    back = { href: termUrl(term), label: '本册目录' };
+  } else if (page === 'lab' && byLab.has(id)) back = labReturn(byLab.get(id), query);
+  else if (page === 'sources') back = { href: '#/textbook', label: '返回课本目录' };
+
+  document.documentElement.toggleAttribute('data-learning-context', Boolean(back));
+  const active = page === 'explore' ? 'explore' : page === 'review' ? 'review' : 'home';
+  for (const link of document.querySelectorAll('[data-nav]')) {
+    const home = link.dataset.nav === 'home';
+    if (home) {
+      link.href = back?.href ?? '#/';
+      link.textContent = back ? '← ' + back.label : '四册';
+      link.toggleAttribute('data-context-return', Boolean(back) && page === 'concept');
+    }
+    if (!back && link.dataset.nav === active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
 }
 
 
@@ -456,6 +504,30 @@ const conceptExamples = {
   trade: { kind: 'evidence', id: 'cooperation' },
 };
 
+const conceptQuestions = {
+  'map-direction': '面对不同方向时，地图上的北还在原来的位置吗？',
+  legend: '校园图上的符号，分别代表什么？',
+  'map-purpose': '想在校园里找路，地图上哪几项信息能帮你？',
+  'terrain-profile': '从侧面看，哪一小段坡的升降更快？',
+  'relative-height': '沿山坡往上走，两点之间的高差怎么找？',
+  'geographic-observation': '图中哪一处线索值得你到实地看一看？',
+  'solar-system': '在示意图上，地球与太阳怎么排列？',
+  'remote-sensing': '从空中观察，能认出地面上的哪些地物？',
+  continents: '转着看世界地图，大洲和大洋怎样相间分布？',
+  'land-change-evidence': '哪条材料能帮助判断陆地和海洋的位置曾经改变？',
+  'ocean-floor': '从大陆边缘走向大洋深处，海底地形怎么变？',
+  'climate-chart': '一张气候图上，怎么分别读气温和降水？',
+  precipitation: '哪个月的降水最多？你在图上看到了什么？',
+  'air-temperature': '想找最高月平均气温，应该看哪一条线？',
+  forecast: '天气资料里的哪些变化，能帮助你决定出门准备什么？',
+  'population-density': '要比较哪里人住得更密，图上要看哪些数？',
+  trade: '从材料中哪里能看出，不同地方在交换商品？',
+  himalayas: '从山谷到山脊，冰雪主要分布在哪些位置？',
+  alps: '冰川和岩壁附近，哪些线索说明山区起伏大？',
+  cordillera: '在不同照片里，怎样分清谷底、岩壁和顶部？',
+  andes: '在山峰、山脊和谷地之间，怎样判断哪里最高？',
+};
+
 function conceptExample(id) {
   return conceptExamples[id];
 }
@@ -476,7 +548,7 @@ async function mountConceptExample(host, example, route) {
 
 function showConcept(concept, query) {
   const origin = contextReturn(query.get('from'));
-  const currentCard = conceptUrl(concept.id, origin.href);
+  const currentCard = activeHash;
   const edges = getRelations(concept.id);
   const links = new Map(edges.map(item => [item.id, item]));
   const lesson = byLesson.get(concept.lessonId);
@@ -494,36 +566,43 @@ function showConcept(concept, query) {
     recommendations.set('contour', { type: '看坡陡不陡', reason: '看看山路上哪里升降最快。' });
   }
 
-  main.innerHTML = `
-    <div class="concept-view">
-      <a class="concept-return" data-context-return href="${escape(origin.href)}">← ${escape(origin.label)}</a>
-      ${pageIntro(concept.title, '', lesson ? '教材 · ' + lesson.title : '', 'concept-page-intro')}
+  const intro = pageIntro(concept.title, '', lesson ? '教材 · ' + lesson.title : '', 'concept-page-intro');
+  const visual = `
       ${concept.id === 'map-direction' ? '<section class="panel direction-panel" data-map-direction aria-label="地图方向示意"></section>' : ''}
       ${topic?.photos?.length ? '<section class="panel photo-gallery" data-gallery aria-label="观察图片"></section>' : ''}
-      ${example ? '<section class="panel inquiry-concept-example" data-concept-example aria-label="看图回顾"></section>' : ''}
+      ${example ? '<section class="panel inquiry-concept-example" data-concept-example aria-label="看图回顾"></section>' : ''}`;
+  const explanation = `
       <section class="panel concept-summary">
         <p>${escape(concept.text)}</p>
       </section>
       ${links.size || compareWith || directlyRelatedLab ? `<details class="panel course-details" data-remember="more-concepts"><summary>想多看一点</summary>
-        <div class="stack concept-links">${relationshipLinks(importantIds, origin.href, recommendations)}</div>
+        <div class="stack concept-links">${relationshipLinks(importantIds, currentCard, recommendations)}</div>
         ${compareWith ? `<a href="${labUrl('terrain', { site: concept.id, siteB: compareWith.id, fromConcept: concept.id, fromCard: currentCard })}" class="text-link concept-experiment">和${escape(compareWith.title)}比地形 ${arrow}</a>`
           : directlyRelatedLab ? `<a href="${labUrl(directlyRelatedLab.id, { ...conceptLabMode(concept.id), fromConcept: concept.id, fromCard: currentCard })}" class="text-link concept-experiment">打开相关实验 ${arrow}</a>` : ''}
-        ${origin.href === '#/explore' && otherIds.length ? `<details class="other-relations" data-remember="all-relations"><summary>查看全部联系</summary><div class="stack">${relationshipLinks(otherIds, origin.href, links)}</div></details>` : ''}
+        ${origin.href === '#/explore' && otherIds.length ? `<details class="other-relations" data-remember="all-relations"><summary>查看全部联系</summary><div class="stack">${relationshipLinks(otherIds, currentCard, links)}</div></details>` : ''}
       </details>` : ''}
       <details class="panel concept-tools course-details" data-remember="concept-tools"><summary>查课本或收藏</summary>
         <div class="actions">
-          ${lesson ? `<a href="${lessonUrl(lesson.id)}" class="button">打开《${escape(lesson.title)}》</a>` : ''}
+          ${lesson ? `<a href="${lessonUrl(lesson.id)}?from=${encodeURIComponent(currentCard)}" class="button">打开《${escape(lesson.title)}》</a>` : ''}
           <button class="button" type="button" data-bookmark aria-pressed="${state.saved.includes(concept.id)}">${state.saved.includes(concept.id) ? '已收藏' : '收藏知识点'}</button>
         </div>
-      </details>
-    </div>`;
+      </details>`;
+  const question = conceptQuestions[concept.id] || topic?.photos?.[0]?.cue;
+  if (question && visual.trim()) {
+    utilityFlow(intro, [
+      { id: 'observe', label: '观察线索', content: `<p class="geo-core-question">${escape(question)}</p>${visual}`, next: '核对这个知识点' },
+      { id: 'explain', label: '说清知识点', content: explanation },
+    ], '知识卡进度');
+  } else {
+    main.innerHTML = `<article class="geo-utility concept-view">${intro}${explanation}</article>`;
+  }
   const cardState = conceptUrl(concept.id);
   const direction = main.querySelector('[data-map-direction]');
   if (direction) mountMapDirection(direction, learning.getView(cardState)?.direction,
     settings => learning.saveView(cardState, { direction: settings }));
   const gallery = main.querySelector('[data-gallery]');
   if (gallery) cleanup = mountPhotoGallery(gallery, topic.photos, learning.getView(cardState)?.galleryIndex,
-    index => learning.saveView(cardState, { galleryIndex: index }));
+    index => learning.saveView(cardState, { galleryIndex: index }), { embedded: true });
   const exampleHost = main.querySelector('[data-concept-example]');
   if (exampleHost) mountConceptExample(exampleHost, example, cardState);
   const bookmark = main.querySelector('[data-bookmark]');
@@ -544,6 +623,7 @@ const searchableScenes = [
 
 function explore() {
   main.innerHTML = `
+    <article class="geo-utility">
     ${pageIntro('知识网', '找一个地方，或者问一个读图问题。', '', 'concept-page-intro')}
     <div class="search-box">
       <label class="field-label" for="search">搜索地名、概念或课次</label>
@@ -551,7 +631,7 @@ function explore() {
     </div>
     <div class="mini-actions" aria-label="常用查找">${['山脉', '气候', '经纬', '地图'].map(term => '<button class="chip" type="button" data-term="' + term + '">' + term + '</button>').join('')}</div>
     <p class="results-label" id="results-count" aria-live="polite"></p><div id="results" class="grid"></div>
-    <div class="actions"><button class="button" type="button" data-show-all>浏览全部知识点</button></div>`;
+    <div class="actions"><button class="button" type="button" data-show-all>浏览全部知识点</button></div></article>`;
   const input = main.querySelector('#search');
   const result = main.querySelector('#results');
   const count = main.querySelector('#results-count');
@@ -562,9 +642,9 @@ function explore() {
     aliases: concept.id === 'contour' ? '坡陡 坡缓 山坡有多陡 等高线怎么看坡度' : '',
   }));
   const combined = catalog.concat(
-    work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '七上课本', href: lessonUrl(lesson.id) })),
-    extendedEntries.map(lesson => ({ title: lesson.title, text: lesson.chapter, titleOfLesson: volumeById.get(lesson.term).title, href: lessonUrl(lesson.id) })),
-    searchableScenes.map(scene => ({ ...scene, titleOfLesson: '转动地球仪' })),
+    work.map(lesson => ({ title: lesson.title, text: lesson.intro, titleOfLesson: '七上课本', href: lessonUrl(lesson.id) + '?from=%23%2Fexplore' })),
+    extendedEntries.map(lesson => ({ title: lesson.title, text: lesson.chapter, titleOfLesson: volumeById.get(lesson.term).title, href: lessonUrl(lesson.id) + '?from=%23%2Fexplore' })),
+    searchableScenes.map(scene => ({ ...scene, href: scene.href + '&returnTo=%23%2Fexplore', titleOfLesson: '转动地球仪' })),
   );
 
   function search() {
@@ -608,35 +688,38 @@ function explore() {
 
 function review() {
   const allLessons = [...work, ...extendedEntries];
+  const resume = allLessons.find(lesson => lesson.id === state.resume?.lessonId);
+  const resumeRoute = resume && state.resume.route;
   const needsReview = allLessons.filter(lesson => lesson.tasks.some(task => {
     const selection = state.answers[task.id]?.option;
     return Number.isInteger(selection) && selection !== task.answer;
   }));
-  const recent = allLessons.filter(lesson => state.visits[lesson.id])
+  const recent = allLessons.filter(lesson => lesson !== resume && state.visits[lesson.id])
     .sort((a, b) => Number(state.visits[b.id]) - Number(state.visits[a.id])).slice(0, 8);
   const list = (items, empty) => items.length ? `<div class="review-list">${items.map(lesson => `<div class="review-item">
     <a href="#/practice/${lesson.id}">${escape(lesson.title)}</a><small>${doneCount(lesson)} / ${lesson.tasks.length} 题</small></div>`).join('')}</div>` : `<p class="empty">${empty}</p>`;
   main.innerHTML = `
-    ${pageIntro('我的复习', '找回做过的课、再看没想通的题，也可以把进度带到另一台设备。')}
-    <div class="lesson-shell">
+    <article class="geo-utility">${pageIntro('我的复习', '')}
+    ${resume ? `<a class="button primary volume-resume" href="${escape(resumeRoute)}"><span><small>继续上次</small><strong>${escape(resume.title)}</strong></span>${arrow}</a>` : ''}
+    <div class="lesson-shell geo-review-menu">
       <div class="lesson-content">
         <section class="panel"><h2>再试一次</h2>${list(needsReview, '如果一道题想再查证，它所在的课会显示在这里。')}</section>
-        <section class="panel"><h2>最近回顾</h2>${recent.length ? '<div class="review-list">' + recent.map(lesson => `<div class="review-item"><a href="${lessonUrl(lesson.id)}">${escape(lesson.title)}</a></div>`).join('') + '</div>' : '<p class="empty">打开过的课会出现在这里。</p>'}</section>
+        ${recent.length ? '<details class="panel course-details" data-remember="review-recent"><summary>最近看过</summary><div class="review-list">' + recent.map(lesson => `<div class="review-item"><a href="${lessonUrl(lesson.id)}?from=%23%2Freview">${escape(lesson.title)}</a></div>`).join('') + '</div></details>' : ''}
         <section class="panel"><h2>按课练习</h2><form class="review-practice">
           <label class="field-label" for="practice-lesson">选一课</label>
           <select id="practice-lesson" required><option value="">请选择</option>${['7a', '7b', '8a', '8b'].map(term => `<optgroup label="${volumeById.get(term).title}">${(term === '7a' ? textbookEntries : entriesForVolume(term)).map(entry => `<option value="${entry.id}">${escape(entry.title)}</option>`).join('')}</optgroup>`).join('')}</select>
-          <button class="button" type="submit">开始练习</button>
+          <button class="button ${resume ? '' : 'primary'}" type="submit">开始练习</button>
         </form></section>
       </div>
       <aside class="lesson-aside">
         <section class="panel"><h2>收藏知识点</h2>
           ${state.saved.length ? '<div class="stack">' + relationshipLinks(state.saved, '#/review') + '</div>' : '<p class="empty">在知识卡上点“收藏知识点”后，就能在这里找到它。</p>'}</section>
-        <section class="panel"><h2>学习进度</h2><p>进度保存在现在使用的浏览器中。</p>
+        <details class="panel course-details" data-remember="review-backup"><summary>备份学习进度</summary><p>进度保存在当前浏览器。</p>
           <div class="mini-actions"><button type="button" class="button" id="export">导出</button><button type="button" class="button" id="import">导入</button></div>
           <input type="file" id="import-file" accept=".json,application/json" hidden><p id="import-feedback" role="status"></p>
-        </section>
+        </details>
       </aside>
-    </div>`;
+    </div></article>`;
   main.querySelector('.review-practice').addEventListener('submit', event => {
     event.preventDefault();
     const selected = main.querySelector('#practice-lesson').value;
@@ -661,6 +744,7 @@ function review() {
       const imported = JSON.parse(await file.text());
       learning.importProgress(imported);
       review();
+      main.querySelector('[data-remember="review-backup"]').open = true;
       main.querySelector('#import-feedback').textContent = '学习进度已合并。';
     } catch {
       main.querySelector('#import-feedback').textContent = '无法读入。请选择从地理实验台导出的进度文件。';
@@ -670,21 +754,81 @@ function review() {
 }
 
 function practice(lesson) {
-  main.innerHTML = `${breadcrumb(lesson.title, '#/review', '复习')}
-    ${pageIntro(lesson.title, '用刚才学过的方法想一想。', '按课练习')}
-    <section class="panel">${lesson.tasks.map((task, index) => taskHtml(task, index)).join('')}</section>`;
+  const intro = pageIntro(lesson.title, '', '按课练习');
+  const tasks = lesson.tasks;
+  if (tasks.length === 1) {
+    main.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">${intro}${taskHtml(tasks[0], 0, true)}</article>`;
+  } else {
+    utilityFlow(intro, tasks.map((task, index) => ({
+      id: 'practice-' + (index + 1), label: '练习 ' + (index + 1), content: taskHtml(task, index, true),
+      next: index < tasks.length - 1 ? '下一题' : '',
+    })), '练习进度');
+  }
   bindTasks(lesson.tasks);
 }
 
 function legend(query) {
   const volume = volumeById.get(query.get('term')) ?? volumeById.get('7a');
-  main.innerHTML = `${breadcrumb('常用地图图例', termUrl(volume.id), volume.title)}${pageIntro('常用地图图例', '认一认你这册课本里的图例，再用校园小地图试一试。', '课本附录 · 第 ' + volume.legendPage + ' 页')}
-    <section class="panel" aria-label="本册课本图例">
-      <h2>${volume.title}图例</h2>
-      ${renderTextbookLegend(volume.id)}
-    </section>
-    <section class="panel" data-legend-example aria-label="校园地图练习"></section>`;
+  const intro = pageIntro('常用地图图例', '', volume.title + ' · 课本附录 · 第 ' + volume.legendPage + ' 页');
+  utilityFlow(intro, [
+    {id: 'symbols', label: '认课本符号', next: '去校园图上找',
+      content: `<p class="geo-core-question">地图上的线和点，各代表什么地物？</p>
+        <section class="panel" aria-label="课本图例示例">${renderTextbookLegend(volume.id, true)}</section>
+        <details class="panel course-details" data-remember="legend-reference"><summary>查本册全部图例</summary>${renderTextbookLegend(volume.id)}</details>`},
+    {id: 'campus', label: '在校园图核对',
+      content: '<section class="panel" data-legend-example aria-label="校园地图练习"></section>'},
+  ], '图例进度');
   mountConceptExample(main.querySelector('[data-legend-example]'), { kind: 'legend' }, activeHash);
+}
+
+const experimentPlans = {
+  contour: ['哪条山路有一小段更陡？', '两段路走同样远时，高度变化越大，坡越陡。看剖面图时，先比较横向距离，再比较高度变化。'],
+  terrain: ['并排放两处山地，怎样比高低才公平？', '先确认两张剖面图使用同一纵轴尺度和高程色阶，再比较起伏和海拔。这里的剖面是教学示意。'],
+  coordinates: ['两个地点只知道纬度，能在地球仪上分清它们吗？', '纬度说明地点在赤道南北多远。经度说明地点在本初子午线东西多少度。用经纬线的交点定位。'],
+  daylight: ['北京附近在一天里的什么时刻转进地球仪的亮面？', '先认出向着太阳的亮面，再看同一个地点随地球自转怎样从亮面进入暗面。'],
+  terrainGlobe: ['转动地球仪，哪里出现连成一片的山地？', '先从地球仪找山地的大致位置和延伸方向。要读出海拔，拿同一处的位置去对照分层设色图及图例。'],
+  currents: ['海水往哪边流？怎样区分暖流和寒流？', '用箭头读流向，再用图例认暖流、寒流。同一片海上的箭头可能指向不同方向。'],
+  monsoon: ['把冬季和夏季对照，季风吹去的方向怎样变？', '先认海陆，再顺着箭头读风吹去的方向。把两季的方向并排比较。'],
+};
+
+function showLab(lab, query, route, view, version) {
+  const intro = pageIntro(lab.title, '', '地理实验');
+  const experimentKey = settings => {
+    if (lab.id !== 'globe') return lab.id;
+    if (settings.mode === 'terrain') return 'terrainGlobe';
+    if (settings.mode === 'circulation') return settings.flow === 'monsoon' ? 'monsoon' : 'currents';
+    return settings.mode === 'daylight' ? 'daylight' : 'coordinates';
+  };
+  const saved = view?.labState ?? state.labs[lab.id];
+  const first = experimentPlans[experimentKey({
+    mode: query.get('mode') || saved?.mode, flow: query.get('flow') || saved?.flow,
+  })];
+  utilityFlow(intro, [
+    {id: 'try', label: '动手观察', next: '整理刚才的方法',
+      content: `<p class="geo-core-question" data-lab-question>${escape(first[0])}</p><div data-lab></div>`},
+    {id: 'method', label: '整理实验方法',
+      content: `<div class="geo-method"><h3>下次用这个方法</h3><p data-lab-method>${escape(first[1])}</p></div>
+        <details class="panel course-details" data-remember="lab-concepts"><summary>相关课本知识</summary><div class="stack">${relationshipLinks(lab.links, route)}</div></details>`},
+  ], '实验进度');
+  const host = main.querySelector('[data-lab]');
+  const question = main.querySelector('[data-lab-question]');
+  const method = main.querySelector('[data-lab-method]');
+  const current = () => renderVersion === version;
+  mountLearningLab(host, lab, query, saved, lab.id, { origin: route }, current, settings => {
+    const [prompt, takeaway] = experimentPlans[experimentKey(settings)];
+    if (question.textContent !== prompt) question.textContent = prompt;
+    if (method.textContent !== takeaway) method.textContent = takeaway;
+  }).then(dispose => {
+    if (!dispose) return;
+    if (!current()) { dispose(); return; }
+    cleanup = dispose;
+    if (view?.scrollY) scrollTo(0, view.scrollY);
+    else if (!host.closest('[hidden]')) fitActivityStage(host);
+  }).catch(error => {
+    if (!current()) return;
+    console.error(error);
+    host.textContent = '实验暂时打不开，请刷新后再试。';
+  });
 }
 
 function sources() {
@@ -694,7 +838,7 @@ function sources() {
     ['八年级上册', '978-7-5204-4111-7', 'https://r2-ndr.ykt.cbern.com.cn/edu_product/esp/assets/0f612d26-b797-4ac4-8de3-0f9eaf8ef27e.t/zh-CN/1787796759059/transcode/image/6.jpg'],
     ['八年级下册', '978-7-5204-4110-0', 'https://r3-ndr.ykt.cbern.com.cn/edu_product/esp/assets/96effd81-fc72-4521-888f-07ea6866a4c9.t/zh-CN/1772437420586/transcode/image/6.jpg'],
   ];
-  main.innerHTML = `${breadcrumb('教材与素材来源')}${pageIntro('教材与素材来源', '')}
+  main.innerHTML = `<article class="geo-utility">${pageIntro('教材与素材来源', '')}
     <section class="panel"><h2>教材</h2><p>《地理》中图版（北京版），北京教育科学研究院编著，中国地图出版社出版，钟作慈主编。</p>
       <p>四册课序与页码依据国家中小学智慧教育平台的电子教材。网页的模拟图和练习用于课前预习和课后复习。</p>
       <ul>${textbooks.map(([title, isbn, url]) => `<li><a href="${url}" target="_blank" rel="noopener">国家平台 · ${title}目录 ↗</a> <small>ISBN ${isbn}</small></li>`).join('')}</ul>
@@ -706,7 +850,7 @@ function sources() {
     </section>
     <section class="panel"><h2>洋流与季风</h2><p>箭头根据资料重画，表示有代表性的方向和路径。</p>
       <div class="stack">${FLOW_SOURCES.map(source => `<a class="link-row" href="${escape(source.url)}" target="_blank" rel="noopener">${escape(source.title)} ↗</a>`).join('')}</div>
-    </section>`;
+    </section></article>`;
 }
 
 
@@ -750,7 +894,7 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const dataVersion = id === '8a' ? 5 : 4;
+    const dataVersion = ['7b', '8a'].includes(id) ? 5 : 4;
     const url = new URL(`./term-${id}.js?v=${dataVersion}${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
@@ -772,20 +916,24 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
   const workbook = entriesForVolume(summary.term);
   const following = workbook[workbook.findIndex(item => item.id === summary.id) + 1];
   let retries = 0;
-  const loadingBack = practiceOnly ? `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a>` : '';
-
   async function open() {
-    main.innerHTML = `${loadingBack}<section class="volume-heading">
+    main.innerHTML = `<section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=7', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=8', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
-      const [lessons, {renderTermLesson}] = await Promise.all([
+      const [lessons, {renderTermLesson, renderTermPractice}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
       ]);
       if (!valid()) return;
       const entry = lessons.get(summary.id);
       if (!entry) throw new Error('volume entry unavailable');
+      if (practiceOnly) {
+        renderTermPractice(main, { entry, learning });
+        if (retries) main.focus({preventScroll: true});
+        document.title = entry.title + ' · 地理实验台';
+        return;
+      }
       const related = (entry.related || []).map(id => {
         const direct = byLesson.get(id) || termEntryById.get(id);
         if (direct) return {title: direct.title, href: lessonUrl(id) + '?from=' + encodeURIComponent(route)};
@@ -793,7 +941,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
         return concept ? {title: concept.title, href: conceptUrl(id, route)} : null;
       }).find(Boolean);
       drawing = renderTermLesson(main, {
-        entry, term: volume, next: following, related, learning, reviewOnly: practiceOnly,
+        entry, term: volume, next: following, related, learning,
         initialStep: view?.flowStep ?? view?.section,
         onStep: flowStep => learning.saveView(route, { flowStep }),
         onGlobe: globeMode ? host => {
@@ -810,18 +958,15 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
             index => learning.saveView(route, {galleryIndex: index}), {embedded: true});
         } : undefined,
       });
-      if (!practiceOnly) {
-        learning.recordVisit(summary.id);
-        const context = previous ? routeParts(previous) : null;
-        if (!courseReturn(routeParts(route).query, summary.id) && context?.page !== 'concept' && context?.page !== 'lab') {
-          learning.setResume(summary.id, {route, scrollY: view?.scrollY || 0});
-        }
+      learning.recordVisit(summary.id);
+      const context = previous ? routeParts(previous) : null;
+      if (!courseReturn(routeParts(route).query, summary.id) && context?.page !== 'concept' && context?.page !== 'lab') {
+        learning.setResume(summary.id, {route, scrollY: view?.scrollY || 0});
       }
       if (retries) main.focus({preventScroll: true});
       restoreView(view);
       document.title = entry.title + ' · 地理实验台';
-      if (practiceOnly) main.querySelector('[data-term-review]')?.scrollIntoView({block: 'start'});
-      else if (view?.section) restoreInquiryPosition(view);
+      if (view?.section) restoreInquiryPosition(view);
       else if (view?.scrollY) scrollTo(0, view.scrollY);
       const origin = previous && routeParts(previous);
       if (origin && courseReturn(origin.query, origin.id) === route) {
@@ -830,7 +975,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     } catch (error) {
       if (!valid()) return;
       console.warn('Volume activity could not be loaded', summary.id, error);
-      main.innerHTML = `${loadingBack}<section class="panel">
+      main.innerHTML = `<section class="panel">
         <h1>${escape(summary.title)}</h1><p role="status">这节课的材料没载入。${summary.page ? '可先翻课本第 ' + summary.page + ' 页。' : ''}</p>
         <button type="button" class="button primary" data-volume-retry>重新加载这一课</button></section>`;
       main.querySelector('[data-volume-retry]').addEventListener('click', () => {
@@ -864,29 +1009,12 @@ function render() {
   const view = learning.getView(next) ?? (lesson || expanded && page === 'lesson' ? state.positions[id] : null);
   document.documentElement.dataset.learningRoute = page;
   const lessonTerm = page === 'lesson' && (lesson ? '7a' : expanded?.term);
-  const brand = document.querySelector('.site-header .brand');
-  if (lessonTerm) {
-    brand.removeAttribute('href');
-    brand.removeAttribute('aria-label');
-  } else {
-    brand.setAttribute('href', '#/');
-    brand.setAttribute('aria-label', '地理实验台首页');
-  }
-  const activeTab = page === 'explore' || page === 'concept' ? 'explore' : page === 'review' || page === 'practice' ? 'review' : 'home';
-  for (const link of document.querySelectorAll('[data-nav]')) {
-    if (link.dataset.nav === 'home') {
-      const origin = lessonTerm ? courseReturn(query, id) : null;
-      link.textContent = origin ? '‹ 回原课' : lessonTerm ? '‹ 本册目录' : '四册';
-      link.href = origin || (lessonTerm ? termUrl(lessonTerm) : '#/');
-    }
-    if (link.dataset.nav === activeTab) link.setAttribute('aria-current', 'page');
-    else link.removeAttribute('aria-current');
-  }
+  renderNavigation(page, id, query, lessonTerm);
   if (!page) {
     const recent = termEntryById.get(state.lastLesson) || getTextbookPosition(state.lastLesson)?.entry;
     main.innerHTML = viewId === 'recall' ? renderCourseHub(recent) : sevenUpperHome();
   } else if (page === 'textbook') main.innerHTML = textbookDirectory(priorInVolume || undefined, true);
-  else if (volume?.id === '7a') main.innerHTML = '<a class="volume-back" href="#/">← 四册目录</a>' + sevenUpperHome(priorInVolume);
+  else if (volume?.id === '7a') main.innerHTML = sevenUpperHome(priorInVolume);
   else if (volume) main.innerHTML = renderVolumeDirectory(volume, state, priorInVolume);
   else if (expanded) showExpandedLesson(expanded, next, previous, view, version, page === 'practice');
   else if (lesson) {
@@ -898,36 +1026,8 @@ function render() {
       learning.setResume(id, { route: next, scrollY: view?.scrollY || 0 });
     }
   } else if (page === 'concept' && byConcept.has(id)) showConcept(byConcept.get(id), query);
-  else if (page === 'lab' && byLab.has(id)) {
-    const lab = byLab.get(id);
-    const from = query.get('from');
-    const originCard = byConcept.get(query.get('fromConcept'));
-    const back = byLesson.get(from) || byLesson.get(lab.lessonId);
-    const directReturn = acceptedOrigin(query.get('returnTo'));
-    const fromCard = acceptedOrigin(query.get('fromCard'));
-    const cardUrl = originCard ? conceptUrl(originCard.id) : null;
-    const cardReturn = fromCard?.startsWith(cardUrl + '?from=') ? fromCard : cardUrl;
-    const backUrl = directReturn || (originCard ? cardReturn : query.get('fromGlobe') === 'terrain'
-      ? labUrl('globe', { mode: 'terrain' }) : back ? lessonUrl(back.id) : '#/textbook');
-    const backLabel = directReturn ? contextReturn(directReturn).label : originCard ? '返回' + originCard.title
-      : query.get('fromGlobe') === 'terrain' ? '返回地球仪' : back ? '返回《' + back.title + '》' : '课本目录';
-    main.innerHTML = `${breadcrumb(lab.title, backUrl, backLabel)}
-      ${pageIntro(lab.title, lab.description, '', 'lab-page-intro')}<div data-lab></div>
-      <details class="panel course-details" data-remember="lab-concepts"><summary>相关课本知识</summary><div class="stack">${relationshipLinks(lab.links, activeHash)}</div></details>`;
-    const host = main.querySelector('[data-lab]');
-    mountLearningLab(host, lab, query, view?.labState ?? state.labs[id], id, { origin: next },
-      () => renderVersion === version).then(dispose => {
-        if (!dispose) return;
-        if (renderVersion !== version) { dispose(); return; }
-        cleanup = dispose;
-        if (view?.scrollY) scrollTo(0, view.scrollY);
-        else fitActivityStage(host);
-      }).catch(error => {
-        if (renderVersion !== version) return;
-        console.error(error);
-        host.textContent = '实验暂时打不开，请刷新后再试。';
-      });
-  } else if (page === 'explore') {
+  else if (page === 'lab' && byLab.has(id)) showLab(byLab.get(id), query, next, view, version);
+  else if (page === 'explore') {
     const storedQuery = view?.search;
     if (storedQuery) Object.assign(exploreState, storedQuery);
     explore();

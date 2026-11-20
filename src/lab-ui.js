@@ -362,7 +362,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
         live.textContent = `${path.name}（${type}）· ${path.direction}`;
         reading.textContent = legend + path.description + ' ' + (FLOW_NOTES[settings.flow === 'monsoon' ? settings.season : 'currents'] ?? '');
         const link = document.createElement('a');
-        link.href = '#/lesson/climate';
+        link.href = '#/lesson/climate?' + new URLSearchParams({ from: origin });
         link.className = 'text-link';
         link.textContent = '联系七上 世界主要气候类型 →';
         if (!inline) overlayLinks.append(link);
@@ -401,7 +401,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
       live.textContent = `示意最高点 A 约 ${Math.max(...a.heights)} 米 · B 约 ${Math.max(...b.heights)} 米`;
       reading.textContent = `A 为${a.region}的${a.name}，B 为${b.region}的${b.name}。两条教学示意剖面使用同一高程尺度。实际位置和高程范围以教材地形图为准。`;
       const links = host.querySelector('[data-terrain-links]');
-      links.replaceChildren(...[settings.siteA, settings.siteB].map(id => {
+      links.replaceChildren(...Array.from(new Set([settings.siteA, settings.siteB]), id => {
         const link = document.createElement('a');
         link.className = 'text-link';
         link.href = '#/concept/' + id + '?' + new URLSearchParams({ from: origin });
@@ -416,6 +416,7 @@ export function mountLabUI(host, lab, params, saved, onChange, { inline = false,
     }
     if (!labFeedback) return;
     labFeedback.hidden = !Number.isInteger(settings.answer);
+    labFeedback.parentElement.dataset.result = labFeedback.hidden ? '' : settings.answer === correctAnswer ? 'correct' : 'retry';
     if (!labFeedback.hidden) {
       labFeedback.textContent = challenges[kind].feedback[settings.answer];
       labFeedback.classList.toggle('try-again', settings.answer !== correctAnswer);

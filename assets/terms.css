@@ -278,6 +278,7 @@
 .geo-step:has(> .geo-step-body :is(.button.primary, [data-rain-test][aria-pressed="false"], [data-rain-test][aria-pressed="true"] + [data-rain-drain][aria-pressed="false"]):not(:disabled, [hidden], [hidden] *, details:not([open]) *, .next-lesson)) .geo-step-next,
 .geo-step:has([data-geo-prediction]):not(:has([data-geo-pick][aria-pressed="true"])) .geo-step-next,
 .geo-step:has(> .geo-step-body :is([data-term-answer], [data-option], [data-reading-evidence], [data-scope-choice])):not(:has(> .geo-step-body [data-result="correct"])) .geo-step-next,
+.geo-extra-learning .geo-step:has([data-lab-answer]:not([hidden] *)):not(:has([data-result="correct"])) .geo-step-next,
 .geo-step:has(> .geo-step-body details[open] .button.primary:not([hidden], [hidden] *, details:not([open]) *)) .next-lesson {
   border-color: var(--line);
   background: var(--paper);
@@ -311,8 +312,7 @@
 }
 .geo-lesson .option-letter { color: inherit; }
 
-[data-learning-route="lesson"] .site-header .brand:not([href]) { cursor: default; }
-[data-learning-route="lesson"] .site-header [data-nav="home"] {
+[data-learning-context] .site-header [data-nav="home"] {
   background: transparent;
   padding-inline: 8px 0;
   color: var(--muted);
@@ -321,9 +321,53 @@
   text-decoration: underline;
 }
 
+.geo-utility { max-width: 70rem; margin-inline: auto; }
+.geo-utility.concept-view { max-width: 51rem; }
+.geo-extra-learning > .page-intro { margin: 0 0 12px; }
+.geo-extra-learning > .page-intro h1 { font-size: clamp(1.55rem, 4vw, 2.3rem); }
+.geo-extra-learning .geo-core-question {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-inline-start: 3px solid var(--geo-question-line);
+  border-radius: 0 8px 8px 0;
+  background: var(--geo-question);
+  color: var(--geo-question-ink);
+  font-weight: 700;
+}
+.geo-extra-learning .geo-step-body > .panel { margin-block: 0 9px; }
+.geo-extra-learning .geo-method {
+  display: grid;
+  gap: .35rem;
+  margin-bottom: 10px;
+  border-inline-start: 3px solid var(--geo-material-line);
+  padding: 10px 12px;
+  border-radius: 0 8px 8px 0;
+  background: var(--geo-material);
+  color: var(--geo-material-ink);
+}
+.geo-extra-learning .geo-method h3 { font-size: 1rem; }
+.geo-extra-learning .lab-followup > .panel { margin-block: 0; }
+.book-legend-preview > ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0 14px; }
+.geo-review-menu .review-practice { margin-top: 6px; }
+.geo-review-menu #import-feedback:not(:empty) { margin-top: 7px; }
+
 @media (min-width: 900px) and (min-height: 501px) and (orientation: landscape) {
-  [data-learning-route="lesson"] .site-header .bar { max-width: 70rem; }
+  [data-learning-context] .site-header .bar { max-width: 70rem; }
   .geo-lesson { max-width: 70rem; }
+  .geo-extra-learning .photo-gallery {
+    display: grid;
+    grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+    gap: 5px 14px;
+    padding-block: 12px;
+    align-items: start;
+  }
+  .geo-extra-learning .photo-gallery .gallery-track { grid-area: 1 / 1 / span 3; }
+  .geo-extra-learning .photo-gallery .gallery-frame { max-height: min(42svh, 310px); }
+  .geo-extra-learning .photo-gallery figcaption { display: none; }
+  .geo-extra-learning .photo-gallery .gallery-right-caption { display: block; grid-area: 1 / 2; }
+  .geo-extra-learning .photo-gallery .gallery-controls { grid-area: 2 / 2; justify-content: start; flex-wrap: wrap; }
+  .geo-extra-learning .photo-gallery .gallery-sources { grid-area: 3 / 2; }
+  .geo-extra-learning .lab-layout :is(.scene-host, .flat-host) { height: clamp(136px, 26svh, 225px); }
   .geo-flow-layout {
     display: grid;
     grid-template-columns: 12.8rem minmax(0, 1fr);
@@ -383,6 +427,16 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+}
+
+@media (min-width: 1040px) and (min-height: 550px) and (orientation: landscape) {
+  .geo-extra-learning [data-lab][data-lab-kind="contour"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+  }
+  .geo-extra-learning [data-lab-kind="contour"] .lab-followup > .panel { padding: 13px; }
 }
 .geo-lesson .term-station .term-feedback:not([data-result="correct"], [data-result="retry"], [data-result="correct"] *, [data-result="retry"] *) {
   border-inline-start-color: var(--geo-material-line);

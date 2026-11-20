@@ -46,11 +46,10 @@ export function renderVolumeDirectory(volume, state, returning) {
     .sort((a, b) => state.visits[b.id] - state.visits[a.id])[0];
   const first = returning || recent || entries[0];
   return `<section class="volume-directory" data-volume-directory="${volume.id}">
-    <a class="volume-back" href="#/">← 四册目录</a>
     <div class="volume-heading"><h1>${volume.title}</h1><p>${volume.subtitle}</p></div>
-    ${first ? `<a class="button primary volume-resume" href="${entryUrl(first.id)}"><span><small>${returning || recent ? '继续读本册' : '从本册第一课开始'}</small><strong>${escape(first.title)}</strong></span>${nextArrow}</a>` : ''}
-    <div class="volume-chapters">${(index[volume.id] || []).map(chapter => `<section class="volume-chapter"><h2>${escape(chapter.title)}</h2>
-      <ul>${chapter.lessons.map(entry => {
+    ${first ? `<a class="button primary volume-resume" data-volume-entry="${first.id}" aria-current="location" href="${entryUrl(first.id)}"><span><small>${returning || recent ? '继续读本册' : '从本册第一课开始'}</small><strong>${escape(first.title)}</strong></span>${nextArrow}</a>` : ''}
+    <div class="volume-chapters">${(index[volume.id] || []).filter(chapter => chapter.lessons.some(entry => entry.id !== first?.id)).map(chapter => `<section class="volume-chapter"><h2>${escape(chapter.title)}</h2>
+      <ul>${chapter.lessons.filter(entry => entry.id !== first?.id).map(entry => {
         const widget = state.widgets[entry.id];
         const evidence = widget?.proof?.result || widget?.profilePractice?.mainEvidence;
         const transfer = alignedTransfer(entry.id);

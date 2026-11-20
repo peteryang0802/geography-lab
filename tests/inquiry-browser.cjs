@@ -292,6 +292,7 @@ async function importantFlows(page) {
   await page.locator('[data-inquiry-lesson=maps]').waitFor();
 
   await go(page, '#/legend');
+  await page.locator('[data-geo-step="symbols"] [data-geo-next]').click();
   await page.locator('[data-legend-example] canvas').waitFor();
   await go(page, '#/review');
   await page.locator('#practice-lesson').selectOption('maps');
@@ -413,7 +414,7 @@ async function verifySlowGallery(browser) {
       await page.goto(url(view));
       await page.locator('.inquiry-home').waitFor();
       assert.equal(await page.locator('html').getAttribute('data-inquiry-view'), view);
-      assert.equal(await page.locator('.book-chapters .chapter-entries a').count(), 20);
+      assert.equal(await page.locator('[data-volume-entry]').count(), 20);
       assert.equal(await page.locator('.home-entry').count(), 1);
       for (const [index, id] of ids.entries()) {
         if (index === 0) await go(page, '#/lesson/intro');

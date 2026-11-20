@@ -1,7 +1,7 @@
-export function lessonFlow(steps) {
+export function lessonFlow(steps, railTitle = '本课进度') {
   return `<div class="geo-flow-layout" data-geo-flow>
-    <aside class="geo-flow-rail" aria-label="本课进度">
-      <h2>本课进度</h2><p class="geo-flow-position" aria-hidden="true"></p>
+    <aside class="geo-flow-rail" aria-label="${railTitle}">
+      <h2>${railTitle}</h2><p class="geo-flow-position" aria-hidden="true"></p>
       <ol>${steps.map(({ label }, index) => `<li><span class="geo-flow-number" aria-hidden="true">${index + 1}</span><span>${label}</span></li>`).join('')}</ol>
     </aside>
     <div class="geo-flow-content">${steps.map(({ id, label, content, next }, index) => `
@@ -9,7 +9,7 @@ export function lessonFlow(steps) {
       <h2 class="geo-step-position" id="geo-step-${id}" tabindex="-1">第 ${index + 1} / ${steps.length} 步 · ${label}</h2>
       <div class="geo-step-body">${content}</div>
       <div class="geo-step-actions">
-        ${next ? `<button class="button primary geo-step-next" type="button" data-geo-next>${next} <span aria-hidden="true">→</span></button>` : ''}
+        ${next ? `<button class="button primary geo-step-next" type="button" data-geo-next><span data-geo-next-label>${next}</span> <span aria-hidden="true">→</span></button>` : ''}
         ${index ? '<button class="geo-step-back" type="button" data-geo-back>← 上一步</button>' : ''}
       </div>
     </section>`).join('')}</div>

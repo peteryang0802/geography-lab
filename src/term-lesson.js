@@ -1,7 +1,7 @@
 import { bindPrediction, escapeHtml as escape, methodSummary, renderComparison, renderPrediction } from './inquiry-view.js?v=7';
 import { mountTermDiagram } from './term-diagram.js?v=3';
 import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
-import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=2';
+import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=3';
 import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -246,7 +246,29 @@ function bindProfilePractice(root, config, practice, save, recheck) {
   return () => diagram?.dispose();
 }
 
-export function renderTermLesson(root, { entry, term, next, related, learning, reviewOnly, initialStep, onStep, onGlobe, onPhotos }) {
+function reviewMarkup(review, evidence = '') {
+  return `<section class="term-review" data-term-review data-inquiry-section="term-review">
+      <h3 class="geo-review-prompt" tabindex="-1">${escape(review.prompt)}</h3>
+      ${evidence}
+      <div class="term-choices" role="group" aria-label="选择材料支持的解释">
+        ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
+      </div>
+      <p class="term-feedback" role="status"></p>
+    </section>`;
+}
+
+export function renderTermPractice(root, { entry, learning }) {
+  const key = 'review-' + entry.id;
+  const restored = learning.state.answers[key]?.option ?? learning.state.widgets[entry.id]?.reviewPick;
+  root.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">
+    <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>
+    ${reviewMarkup(entry.review)}
+  </article>`;
+  bindReview(root, entry.review, key, learning, restored, reviewPick =>
+    learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}));
+}
+
+export function renderTermLesson(root, { entry, term, next, related, learning, initialStep, onStep, onGlobe, onPhotos }) {
   const activity = entry.activity;
   const records = dataFor(activity);
   const hasReadings = records.length >= 2 && records.every(point => Number.isFinite(point.value));
@@ -260,7 +282,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
-  const transfer = !reviewOnly && alignedTransfer(entry.id);
+  const transfer = alignedTransfer(entry.id);
   const practiceReview = transfer ? { ...transfer,
     options: transfer.options.map(({label, feedback}) => [label, feedback]),
   } : entry.review;
@@ -298,14 +320,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       </div>` : ''}
       ${renderTermMarkPractice(markPractice)}
     </section>`;
-  const review = `<section class="term-review" data-term-review data-inquiry-section="term-review">
-      <h3 class="geo-review-prompt" tabindex="-1">${escape(practiceReview.prompt)}</h3>
-      ${transfer ? renderComparison(transfer.evidence) : ''}
-      <div class="term-choices" role="group" aria-label="选择材料支持的解释">
-        ${practiceReview.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
-      </div>
-      <p class="term-feedback" role="status"></p>
-    </section>`;
+  const review = reviewMarkup(practiceReview, transfer ? renderComparison(transfer.evidence) : '');
   const recap = `
     ${projectMarkup(entry, learning.state.notes[entry.id])}
     ${canGlobe || onPhotos || related ? `<details class="term-fold" data-remember="term-extras">
@@ -333,11 +348,12 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     ])}
   </article>`;
 
-  const flow = bindLessonFlow(root, reviewOnly ? 'term-review' : initialStep === 'profile-transfer' ? 'profile' : initialStep, onStep);
+  const flow = bindLessonFlow(root, initialStep === 'profile-transfer' ? 'profile' : initialStep, onStep);
   const host = root.querySelector('.term-station');
   const figure = host.querySelector('figure');
   const panel = host.querySelector('[data-term-feedback]');
   const show = host.querySelector('[data-term-see]');
+  const forwardLabel = host.closest('.geo-step').querySelector('[data-geo-next-label]');
   const buttons = [...host.querySelectorAll('[data-term-choice]')];
   const practice = { ...saved?.profilePractice };
   const compareToggle = host.querySelector('[data-term-compare]');
@@ -455,6 +471,9 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     paintOpening(choice);
     startingPoint.textContent = !revealed && choices[choice] ? '带着「' + choices[choice] + '」这个想法去看图。' : '';
     show.classList.toggle('primary', !revealed);
+    forwardLabel.textContent = profilePractice
+      ? (revealed ? '用剖面作判断' : '先用剖面试试')
+      : (revealed ? '记住读图方法' : '先看读图方法');
     for (const button of buttons) {
       button.setAttribute('aria-pressed', String(String(choice) === button.dataset.termChoice));
     }

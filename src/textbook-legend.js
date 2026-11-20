@@ -59,16 +59,25 @@ const groups = [
   ['地貌与其他地物', ['peak', 'volcano', 'desert', 'reef', 'great-wall']],
 ];
 
-export function renderTextbookLegend(term) {
+export function renderTextbookLegend(term, preview = false) {
   const indexes = new Map(rows[term].map((symbol, index) => [symbol, index]));
   const atlas = new URL(`../assets/legend-${term}.webp`, import.meta.url);
+  function symbolRow(symbol) {
+    const marker = preview ? 'data-preview-symbol' : 'data-legend-symbol';
+    return `<li ${marker}="${symbol}">
+      <span class="book-legend-symbol" aria-hidden="true" style="--legend-y: ${-35 * indexes.get(symbol)}px"></span>
+      <span>${labels[symbol]}${symbolHints[symbol] ? `<small>（${symbolHints[symbol]}）</small>` : ''}</span>
+    </li>`;
+  }
+  if (preview) {
+    return `<div class="book-legend-group book-legend-preview" style="--legend-atlas: url('${atlas}')">
+      <ul>${['china-capital', 'railway', 'river-reservoir', 'peak'].map(symbolRow).join('')}</ul>
+    </div>`;
+  }
   return `<div class="book-legend" style="--legend-atlas: url('${atlas}')">
     ${groups.map(([title, symbols]) => `<section class="book-legend-group">
       <h3>${title}</h3>
-      <ul>${symbols.filter(symbol => indexes.has(symbol)).map(symbol => `<li data-legend-symbol="${symbol}">
-        <span class="book-legend-symbol" aria-hidden="true" style="--legend-y: ${-35 * indexes.get(symbol)}px"></span>
-        <span>${labels[symbol]}${symbolHints[symbol] ? `<small>（${symbolHints[symbol]}）</small>` : ''}</span>
-      </li>`).join('')}</ul>
+      <ul>${symbols.filter(symbol => indexes.has(symbol)).map(symbolRow).join('')}</ul>
     </section>`).join('')}
   </div>`;
 }

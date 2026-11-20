@@ -529,7 +529,7 @@ details p { font-size: .91rem; }
 :root[data-inquiry-view="nearby"] { --inquiry-paper: #f1f6f3; --inquiry-surface: #fffefa; --inquiry-accent: #174c4d; --inquiry-wash: #dcece6; }
 :root[data-inquiry-view="fieldwork"] { --inquiry-paper: #f6f1e8; --inquiry-surface: #fffdf7; --inquiry-accent: #66432f; --inquiry-wash: #f0e3d4; }
 body { background: var(--inquiry-paper); }
-[data-learning-route="lesson"] [data-nav="explore"], [data-learning-route="lesson"] [data-nav="review"] { display: none; }
+[data-learning-context] .site-header :is([data-nav="explore"], [data-nav="review"]) { display: none; }
 .inquiry-home {
   max-width: 1040px;
   display: grid;

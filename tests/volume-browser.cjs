@@ -46,7 +46,8 @@ async function check(engine, name, viewport) {
     await screenshot('home');
     await page.locator('[data-volume="7a"]').click();
     await page.locator('.book-chapter').first().waitFor();
-    assert.equal(await page.locator('.book-chapter .chapter-row').count(), 20);
+    assert.equal(await page.locator('[data-volume-entry]').count(), 20);
+    assert.equal(await page.locator('[data-volume-entry][aria-current="location"]').count(), 1);
     await go('#/lesson/contours');
     await page.locator('.inquiry-lesson').waitFor();
     await go('#/');
@@ -61,7 +62,7 @@ async function check(engine, name, viewport) {
       await fit(book + ' directory');
       await screenshot(book + '-directory');
       await page.locator('a[href="#/legend?term=' + book + '"]').click();
-      await page.locator('[data-legend-example]').waitFor();
+      await page.locator('.book-legend-preview').waitFor();
       assert.match(await page.locator('main').innerText(), new RegExp('课本附录 · 第 ' + appendixPages[bookIndex] + ' 页'));
       const legend = page.locator('.book-legend');
       assert.equal(await legend.locator('[data-legend-symbol]').count(), [25, 27, 28][bookIndex]);
@@ -71,7 +72,12 @@ async function check(engine, name, viewport) {
       assert.equal(await legend.locator('[data-legend-symbol="high-speed-rail"]').count(), Number(book === '8b'));
       assert.equal(await legend.locator('[data-legend-symbol="marsh"]').count(), Number(book === '8b'));
       assert.equal(await legend.locator('[data-legend-symbol="airport"]').count(), Number(book !== '7b'));
-      await page.locator('main a[href="#/term/' + book + '"]').first().click();
+      await page.locator('[data-remember="legend-reference"] summary').click();
+      await legend.waitFor();
+      await page.locator('[data-remember="legend-reference"] summary').click();
+      await page.locator('[data-geo-step="symbols"] [data-geo-next]').click();
+      await page.locator('[data-legend-example] canvas').waitFor();
+      await page.locator('.site-header a[href="#/term/' + book + '"]').click();
       await page.locator('[data-volume-directory="' + book + '"]').waitFor();
 
       for (const [index, entry] of entries.entries()) {
@@ -83,6 +89,12 @@ async function check(engine, name, viewport) {
         assert.match(await lesson.locator('.term-bookname').innerText(), new RegExp(String(entry.page)));
         await moveTo(lesson, 'term-observation');
         const station = lesson.locator('.term-station');
+        if (entry.id === '7b-asia') {
+          const next = lesson.locator('[data-geo-step="term-observation"] [data-geo-next]');
+          assert.match(await next.innerText(), /^先看读图方法/);
+          const fill = button => button.evaluate(element => getComputedStyle(element).backgroundColor);
+          assert.notEqual(await fill(station.locator('[data-term-see]')), await fill(next));
+        }
         const point = station.locator('[data-bar], [data-key]').first();
         await point.click();
         assert.ok((await station.locator('[data-term-feedback]').innerText()).length > 0, entry.id);
@@ -91,6 +103,9 @@ async function check(engine, name, viewport) {
         assert.match(await station.locator('[data-term-feedback]').innerText(), /记下了/);
         await station.locator('[data-term-see]').click();
         assert.equal(await station.locator('[data-term-feedback]').innerText(), entry.activity.choices[0].feedback, entry.id);
+        if (entry.id === '7b-asia') {
+          assert.match(await lesson.locator('[data-geo-step="term-observation"] [data-geo-next]').innerText(), /^记住读图方法/);
+        }
         if (entry.activity.choices[0].focus.length) assert.ok(await station.locator('.mark-selected').count() > 0, entry.id);
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const display = await station.evaluate(section => {
