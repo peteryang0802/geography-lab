@@ -274,15 +274,6 @@
 }
 .geo-step :is(.geo-step-next, .next-lesson).primary { background: var(--green); border-color: var(--green); color: #fffefa; }
 .geo-step :is(.geo-step-next, .next-lesson).primary:hover { background: #22634c; }
-.geo-step .geo-step-next.geo-step-skip.primary {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  padding-inline: 0;
-  text-decoration: underline;
-  text-underline-offset: .18em;
-  font-weight: 500;
-}
 .geo-assessment-label { margin: 8px 0 0; color: var(--muted); font-size: .89rem; }
 [data-assessment="retry"] .geo-assessment-label { color: var(--geo-retry-ink); }
 .term-review-visual .term-review-body { display: grid; gap: 14px; }
@@ -466,3 +457,50 @@
   color: var(--geo-material-ink);
 }
 .geo-lesson .term-profile-transfer > h2 { padding: 8px 10px; background: var(--geo-material); color: var(--geo-material-ink); }
+
+.geo-transfer-layout.has-visual, .term-review-visual .term-review-body { display: grid; gap: 14px; }
+.geo-transfer-material {
+  min-width: 0;
+  margin: 0;
+  align-self: start;
+  border-radius: 8px;
+  padding: 9px;
+  color: var(--geo-material-ink);
+  background: var(--geo-material);
+}
+.geo-transfer-material figcaption, .geo-transfer-map-keys { margin: 5px 0 0; font-size: .84rem; }
+.geo-transfer-material table { width: 100%; border-collapse: collapse; font-size: .89rem; }
+.geo-transfer-material :is(th, td) { text-align: left; padding: 6px; border: 1px solid #88a4ba; }
+.geo-transfer-material thead th { background: #cddff0; }
+.geo-transfer-material :is(th, td, .geo-transfer-cell) { overflow-wrap: anywhere; }
+.geo-transfer-map { display: block; width: 100%; height: 238px; border: 1px solid #91acb9; border-radius: 6px; }
+.geo-transfer-map-keys { display: flex; padding: 0; list-style: none; flex-wrap: wrap; gap: 3px 10px; }
+.geo-transfer-grid { display: grid; gap: 4px; }
+.geo-transfer-row { display: grid; grid-template-columns: repeat(var(--diagram-columns), minmax(0, 1fr)); gap: 4px; }
+.geo-transfer-cell { display: grid; place-items: center; min-height: 37px; padding: 4px; text-align: center; border-radius: 4px; font-size: .88rem; }
+.geo-transfer-cell.land { background: #dce8cb; color: #213f2a; }
+.geo-transfer-cell.water { background: #c6e5ee; color: #174c63; }
+.geo-transfer-cell.route { background: #f3e0bd; color: #623e1f; }
+.geo-transfer-cell.warn { background: #f5d9cf; color: #77311e; }
+.geo-transfer-cell.context { background: #dbe0e7; color: #303e57; }
+.geo-transfer-cell.plain { background: #f8f9f4; color: #243d35; }
+.geo-transfer-bars { position: relative; display: grid; grid-template-columns: repeat(var(--bar-columns), minmax(0, 1fr)); gap: 3px; }
+.geo-transfer-bar { min-width: 0; display: grid; grid-template-rows: 19px 115px 20px; text-align: center; font-size: .77rem; align-items: end; }
+.geo-transfer-bar > span[aria-hidden] { height: var(--bar-height); width: min(70%, 68px); justify-self: center; background: #4c7592; border-radius: 3px 3px 0 0; }
+.geo-transfer-bar > span:last-child { margin-top: 3px; }
+.geo-transfer-limit { position: absolute; inset-inline: 0; bottom: calc(20px + 115px * var(--bar-limit)); border-top: 2px dashed #8a3e10; }
+.geo-transfer-boundaries { display: grid; grid-template-columns: 1.3fr 1fr; align-items: center; gap: 10px; }
+.geo-transfer-province { border: 3px solid #55734c; padding: 9px; background: #dce8cb; color: #213f2a; border-radius: 15% 30% 14% 28%; }
+.geo-transfer-county { display: block; width: fit-content; margin: 9px auto; padding: 7px; border: 2px dashed #885333; border-radius: 30% 16% 26% 12%; }
+.geo-transfer-neighbor { padding: 9px; border: 2px solid #6a768b; border-radius: 24% 10% 22% 15%; background: #dbe0e7; }
+.geo-lesson .feedback:is([data-result='retry'],[data-result='correct']) { background: var(--geo-result); color: var(--geo-result-ink); }
+@media (min-width: 900px) {
+  .geo-transfer-layout.has-visual, .term-review-visual .term-review-body {
+    grid-template-columns: minmax(0, 1.4fr) minmax(245px, 1fr);
+    align-items: start;
+  }
+}
+@media (max-width: 520px) {
+  .geo-transfer-map { height: 185px; }
+  .geo-transfer-cell { padding: 3px; }
+}

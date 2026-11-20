@@ -21,11 +21,11 @@ async function verify(browser, {lesson, step, task}) {
     const material = exercise.locator('.geo-comparison, .evidence');
     const evidence = await material.allTextContents();
     assert.equal(await state(exercise), 'unchecked', task.id);
-    assert.match(await next.innerText(), /暂时跳过/, task.id);
+    assert.equal(await next.isVisible(), false, task.id);
     const wrong = (task.answer + 1) % await options(exercise).count();
     await options(exercise).nth(wrong).click();
     assert.equal(await state(exercise), 'retry', task.id);
-    assert.match(await next.innerText(), /先留待重试/, task.id);
+    assert.equal(await next.isVisible(), false, task.id);
 
     await page.goto(base + '#/review');
     const route = practiceRoute(lesson, task.id);
@@ -93,6 +93,48 @@ async function verifyFirstAndHinted(browser) {
   }
 }
 
+async function verifyEarlierQuestions(browser) {
+  const { lessons } = await import('../src/catalog.js');
+  const { default: geography7b } = await import('../src/term-7b.js');
+  const { default: geography8a } = await import('../src/term-8a.js');
+  const { alignedTransfer } = await import('../src/lesson-practice-transfer.js');
+  const variants = ['weather', 'climate'].map(id => ({id, ...lessons.find(lesson => lesson.id === id).tasks[1], lesson: id}));
+  for (const [id, term] of [['7b-africa', geography7b], ['8a-divisions', geography8a], ['8a-position', geography8a]]) {
+    const lesson = term.chapters.flatMap(chapter => chapter.lessons).find(entry => entry.id === id);
+    variants.push({ ...lesson.review, id: 'review-' + id, lesson: id });
+  }
+  const page = await browser.newPage({ viewport: {width: 1280, height: 720} });
+  try {
+    for (const original of variants) {
+      await page.goto(base + '#/review');
+      const wrong = (original.answer + 1) % original.options.length;
+      await page.evaluate(({id, wrong}) => {
+        localStorage.setItem('geography-lab:learning:v2:answers:' + id, JSON.stringify({option:wrong, solved:false}));
+      }, {id:original.id, wrong});
+      await page.reload();
+      const link = page.locator(`.review-list a[href="${practiceRoute(original.lesson, original.id)}"]`);
+      await link.click();
+      const exercise = page.locator('[data-task], [data-term-review]');
+      await exercise.waitFor();
+      assert.equal(await exercise.locator('h3').innerText(), original.prompt);
+      assert.equal(await options(exercise).nth(wrong).getAttribute('aria-pressed'), 'true');
+      const updated = alignedTransfer(original.lesson);
+      await page.goto(base + practiceRoute(original.lesson, updated.id));
+      await exercise.waitFor();
+      assert.equal(await exercise.locator('h3').innerText(), updated.prompt);
+      assert.equal(await state(exercise), 'unchecked');
+      await options(exercise).nth(updated.answer).click();
+      await page.goto(base + '#/review');
+      await link.click();
+      await exercise.waitFor();
+      assert.equal(await state(exercise), 'retry', original.id);
+      assert.equal(await options(exercise).nth(wrong).getAttribute('aria-pressed'), 'true');
+    }
+  } finally {
+    await page.close();
+  }
+}
+
 (async () => {
   const { alignedPractice, alignedTransfer } = await import('../src/lesson-practice-transfer.js');
   const { textbookEntries } = await import('../src/textbook.js');
@@ -111,7 +153,8 @@ async function verifyFirstAndHinted(browser) {
   try {
     for (const entry of entries) await verify(browser, entry);
     await verifyFirstAndHinted(browser);
-    console.log('PASS', entries.length, 'course questions, exact retry routes, resume, practice and recap');
+    await verifyEarlierQuestions(browser);
+    console.log('PASS', entries.length, 'course questions, exact retries, practice and recap; 5 earlier questions remain distinct');
   } finally {
     await browser.close();
   }

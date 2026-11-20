@@ -32,7 +32,8 @@ export function renderCourseHub(recent) {
       <h1>今天想弄明白什么？</h1>
       <p>课前带一个问题去读图。课后换份材料，再用一次学过的方法。</p>
     </div>
-    ${recent ? `<a class="button primary volume-resume" href="${entryUrl(recent.id)}"><span><small>继续上次 · ${volumeById.get(recent.term || '7a').title}</small><strong>${escape(recent.title)}</strong></span>${nextArrow}</a>` : ''}
+    ${recent ? `<a class="button primary volume-resume" href="${entryUrl(recent.id)}"><span><small>继续上次 · ${volumeById.get(recent.term || '7a').title}</small><strong>${escape(recent.title)}</strong></span>${nextArrow}</a>`
+      : `<a class="button primary volume-resume" href="${entryUrl('intro')}"><span><small>从上学路开始</small><strong>雨停了，为什么只有这儿留着水洼？</strong></span>${nextArrow}</a>`}
     ${renderVolumeCards()}
   </section>`;
 }

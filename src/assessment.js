@@ -24,11 +24,5 @@ export function paintAssessment(element, status) {
     if (summary) summary.textContent = '课末核对 · ' + assessmentLabels[status];
   }
   const next = step?.querySelector('[data-geo-next]');
-  if (!next) return;
-  const text = next.querySelector('[data-geo-next-label]');
-  if (!text) return;
-  text.dataset.advanceText ||= text.textContent;
-  const canAdvance = status !== 'unchecked' && status !== 'retry';
-  next.classList.toggle('geo-step-skip', !canAdvance);
-  text.textContent = canAdvance ? text.dataset.advanceText : status === 'retry' ? '先留待重试' : '暂时跳过';
+  if (next) next.hidden = status === 'unchecked' || status === 'retry';
 }

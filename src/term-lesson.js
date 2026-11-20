@@ -1,10 +1,11 @@
 import { bindPrediction, escapeHtml as escape, methodSummary, renderComparison, renderPrediction } from './inquiry-view.js?v=7';
 import { mountTermDiagram } from './term-diagram.js?v=3';
-import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
-import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=3';
-import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=1';
-import { assessmentState, paintAssessment } from './assessment.js?v=2';
+import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=3';
+import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=4';
+import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=2';
+import { assessmentState, paintAssessment } from './assessment.js?v=3';
 import { profileCourseTasks } from './profile-assessment.js?v=1';
+import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -44,14 +45,14 @@ function alignTermBoard(host, control, feedback) {
     const resultBox = feedback.getBoundingClientRect();
     const drawingBox = host.querySelector('.term-plot, .term-bars')?.getBoundingClientRect();
     const begin = Math.min(drawingBox?.top ?? controlBox.top, controlBox.top);
-    const end = Math.max(drawingBox?.bottom ?? resultBox.bottom, resultBox.bottom, controlBox.bottom);
+    const end = Math.max(drawingBox?.bottom ?? resultBox.bottom, resultBox.bottom);
     const inset = Math.min(8, Math.max(0, Math.floor((height - (end - begin)) / 2)));
     const lowerBound = end - height + inset;
     const upperBound = begin - inset;
     const shift = lowerBound <= upperBound
       ? Math.max(lowerBound, Math.min(upperBound, 0))
       : Math.max(0, Math.min(resultBox.bottom - height + 8, controlBox.top - 8));
-    if (Math.abs(shift) > 1) scrollBy({top: shift, behavior: 'instant'});
+    if (Math.abs(shift) > 1) scrollTo({top: Math.max(0, scrollY + shift), behavior: 'instant'});
   });
 }
 
@@ -64,7 +65,7 @@ function bindReview(root, review, taskId, learning, restored, remember) {
     learning.setRecord('answers', taskId, { option: restored, solved: restored === review.answer });
     record = learning.state.answers[taskId];
   }
-  const figure = info.querySelector('figure');
+  const figure = review.figure ? info.querySelector('figure') : null;
   const submit = info.querySelector('[data-profile-pair-submit]');
   const reset = info.querySelector('[data-profile-pair-reset]');
   const hint = info.querySelector('[data-profile-pair-hint]');
@@ -220,7 +221,8 @@ function bindProfilePractice(root, config, practice, save, recheck) {
 
 function reviewMarkup(review) {
   const figure = review.figure ? `<figure class="term-figure">
-    ${plotMarkup(review.figure)}<figcaption>${escape(review.figure.caption)}</figcaption></figure>` : '';
+    ${plotMarkup(review.figure)}<figcaption>${escape(review.figure.caption)}</figcaption></figure>` :
+    renderTransferMaterial(review.materialId);
   const selection = review.pairs ? `<div class="term-profile-actions">
       <button type="button" class="button primary" data-profile-pair-submit disabled>核对我选的两处</button>
       <button type="button" class="button" data-profile-pair-reset hidden>清空重选</button>
@@ -243,8 +245,9 @@ function reviewMarkup(review) {
 function termReviewTask(entry, taskId) {
   const legacy = { ...entry.review, id: 'review-' + entry.id };
   const transfer = alignedTransfer(entry.id);
-  if (!transfer || taskId === legacy.id) return legacy;
-  return { ...transfer, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
+  if (!transfer) return { ...legacy, materialId: entry.id };
+  if (taskId === legacy.id) return legacy;
+  return { ...transfer, materialId: entry.id, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
 }
 
 export function renderTermPractice(root, { entry, learning, taskId, initialStep, onStep }) {
@@ -257,14 +260,16 @@ export function renderTermPractice(root, { entry, learning, taskId, initialStep,
   })), '练习进度') : reviewMarkup(tasks[0]);
   root.innerHTML = `<article class="geo-lesson geo-extra-learning${tasks.length === 1 ? ' geo-single-practice' : ''}">
     <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>${flow}</article>`;
-  if (tasks.length > 1) bindLessonFlow(root, initialStep, onStep);
+  const lessonSteps = tasks.length > 1 ? bindLessonFlow(root, initialStep, onStep) : null;
   const cleanups = tasks.map(review => {
     const legacy = review.id === 'review-' + entry.id;
     const restored = legacy ? learning.state.widgets[entry.id]?.reviewPick : undefined;
     return bindReview(root, review, review.id, learning, restored, legacy ? reviewPick =>
       learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}) : undefined);
   });
-  return () => cleanups.forEach(cleanup => cleanup());
+  lessonSteps?.verifyRestored();
+  const unmountTransfer = mountTransferMaps(root);
+  return () => { unmountTransfer(); cleanups.forEach(cleanup => cleanup()); };
 }
 
 export function renderTermLesson(root, { entry, term, next, related, learning, initialStep, onStep, onGlobe, onPhotos }) {
@@ -361,6 +366,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   const figure = host.querySelector('figure');
   const panel = host.querySelector('[data-term-feedback]');
   const show = host.querySelector('[data-term-see]');
+  const observationNext = host.closest('.geo-step').querySelector('[data-geo-next]');
   const forwardLabel = host.closest('.geo-step').querySelector('[data-geo-next-label]');
   const buttons = [...host.querySelectorAll('[data-term-choice]')];
   const practice = { ...saved?.profilePractice };
@@ -398,6 +404,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     });
   }
   function paintComparison() {
+    if (profilePractice) observationNext.hidden = !practice.mainEvidence;
     proof?.sync(!comparing);
     if (compareToggle) {
       compareToggle.setAttribute('aria-expanded', String(comparing));
@@ -566,6 +573,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   if (activity.kind !== 'chart') diagram = mountTermDiagram(figure, activity, inspect);
   proof = bindTermMarkPractice(host, markPractice, proofWidget, records, {
     save(value) { proofWidget = value; save(); },
+    status(success) { observationNext.hidden = !success; },
     highlight(indices) { highlight(indices, false); },
     onOpen: paintComparison,
     isGuided() { return revealed; },
@@ -589,6 +597,8 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     save();
   } : undefined);
   const disposeApplication = profileReviews[1] ? bindReview(root, profileReviews[1], profileReviews[1].id, learning) : null;
+  const unmountTransfer = mountTransferMaps(root);
+  flow.verifyRestored();
   projectBinding(root, entry, learning);
 
   const globe = root.querySelector('[data-term-globe]');
@@ -611,5 +621,6 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   if (photoPanel) photoPanel.addEventListener('toggle', () => {
     if (photoPanel.open && !photoRunner) photoRunner = onPhotos(photoPanel.querySelector('[data-term-gallery]'));
   });
-  return () => { diagram?.dispose(); openingDiagram?.dispose(); disposeReview(); disposeApplication?.(); globeRunner?.(); photoRunner?.(); };
+  return () => { diagram?.dispose(); openingDiagram?.dispose(); disposeReview(); disposeApplication?.();
+    unmountTransfer(); globeRunner?.(); photoRunner?.(); };
 }

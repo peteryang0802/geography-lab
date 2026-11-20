@@ -1,0 +1,126 @@
+import { COAST_RINGS } from './geo-model.js';
+import { transferMaterials } from './transfer-material-data.js';
+
+const escape = value => String(value).replace(/[&<>"']/g, character =>
+  ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[character]);
+
+const maps = {
+  'land-ocean': {
+    frame: [-12, 160, 15, -47],
+    route: [[40, -17], [62, -21], [84, -23], [104, -24], [114, -25]],
+    labels: [['非洲', 23, 1], ['澳大利亚', 133, -31], ['大西洋', 5, -31], ['印度洋', 80, -34], ['太平洋', 147, -11]],
+  },
+  '7b-africa': {
+    frame: [-9, 57, 29, -35],
+    labels: [['P · 沙地', 22, 22], ['R · 草原', 24, 11], ['Q · 雨林', 24, -1], ['S · 草原', 27, -12], ['T · 荒漠', 26, -23]],
+    equator: true,
+  },
+  '8a-position': {
+    frame: [-65, 33, 68, 22],
+    route: [[-5, 48], [-15, 48], [-23, 48]],
+    labels: [['欧洲', 11, 52], ['大西洋', -33, 43]],
+  },
+};
+
+export function renderTransferMaterial(id) {
+  const material = transferMaterials[id];
+  if (!material) return '';
+  const map = maps[id];
+  let content;
+  if (map) {
+    content = `<canvas class="geo-transfer-map" data-transfer-map="${id}" role="img" aria-label="${escape(material.caption)}"></canvas>
+    <ul class="geo-transfer-map-keys">${map.labels.map(([label]) => `<li>${escape(label)}</li>`).join('')}</ul>`;
+  } else if (material.type === 'table') {
+    content = `<table><thead><tr>${material.headers.map(cell => `<th scope="col">${escape(cell)}</th>`).join('')}</tr></thead>
+      <tbody>${material.rows.map(row => `<tr>${row.map((cell, index) => index === 0
+        ? `<th scope="row">${escape(cell)}</th>` : `<td>${escape(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  } else if (material.type === 'bars') {
+    const maximum = Math.max(material.threshold || 0, ...material.values.map(([,value]) => value));
+    content = `<div class="geo-transfer-bars" style="--bar-columns:${material.values.length}">
+      ${material.values.map(([name, value]) => `<div class="geo-transfer-bar"><strong>${value} ${escape(material.unit)}</strong>
+        <span aria-hidden="true" style="--bar-height:${Math.max(3, value * 100 / maximum)}%"></span><span>${escape(name)}</span></div>`).join('')}
+      ${material.threshold ? `<div class="geo-transfer-limit" style="--bar-limit:${material.threshold / maximum}" aria-hidden="true"></div>` : ''}</div>`;
+  } else if (material.type === 'nested') {
+    content = `<div class="geo-transfer-boundaries" aria-label="图例：外框为省界，内框为县界。">
+      <div class="geo-transfer-province"><span>${escape(material.outer)}</span><span class="geo-transfer-county">${escape(material.inner)}</span></div>
+      <span class="geo-transfer-neighbor">${escape(material.neighbor)}</span>
+    </div>`;
+  } else {
+    content = `<div class="geo-transfer-grid" role="group" aria-label="示意图">${material.cells.map(row => `<div class="geo-transfer-row" style="--diagram-columns:${row.length}">
+      ${row.map(([label, tone]) => `<span class="geo-transfer-cell ${escape(tone)}">${escape(label)}</span>`).join('')}
+    </div>`).join('')}</div>`;
+  }
+  return `<figure class="geo-transfer-material" data-transfer-material="${id}">${content}
+    <figcaption>${escape(material.caption)}</figcaption></figure>`;
+}
+
+export function mountTransferMaps(root) {
+  const observers = [];
+  for (const canvas of root.querySelectorAll('[data-transfer-map]')) {
+    const map = maps[canvas.dataset.transferMap];
+    const observer = new ResizeObserver(() => drawTransferMap(canvas, map));
+    observer.observe(canvas);
+    observers.push(observer);
+  }
+  return () => observers.forEach(observer => observer.disconnect());
+}
+
+function drawTransferMap(canvas, map) {
+  const {width, height} = canvas.getBoundingClientRect();
+  if (!width || !height) return;
+  const ratio = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const [west, east, north, south] = map.frame;
+  const inset = 12;
+  const point = (longitude, latitude) => [inset + (longitude - west) * (width - 2 * inset) / (east - west),
+    inset + (north - latitude) * (height - 2 * inset) / (north - south)];
+  const line = (points) => points.forEach(([lon, lat], index) => {
+    const position = point(lon, lat);
+    if (index === 0) context.moveTo(...position);
+    else context.lineTo(...position);
+  });
+  context.fillStyle = '#c8e2ed';
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = '#e9dcb6';
+  context.strokeStyle = '#819171';
+  context.lineWidth = 1;
+  context.beginPath();
+  for (const coast of COAST_RINGS) {
+    const shape = Array.from({length: coast.length / 2}, (_, index) => [coast[2 * index], coast[2 * index + 1]]);
+    line(shape);
+    context.closePath();
+  }
+  context.fill();
+  context.stroke();
+  const route = map.route || (map.equator ? [[west,0], [east,0]] : []);
+  context.setLineDash([6, 4]);
+  context.strokeStyle = map.route ? '#872e18' : '#21627a';
+  context.lineWidth = 2.5;
+  context.beginPath();
+  line(route);
+  context.stroke();
+  context.setLineDash([]);
+  if (map.route) {
+    context.fillStyle = '#872e18';
+    for (const endpoint of [route[0], route.at(-1)]) {
+      context.beginPath();
+      context.arc(...point(...endpoint), 4, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+  context.textAlign = 'center';
+  context.font = '600 12px system-ui, sans-serif';
+  const labels = map.equator ? [...map.labels, ['赤道', east - 5, -2]] : map.labels;
+  for (const [label, lon, lat] of labels) {
+    const [x, y] = point(lon, lat);
+    context.lineWidth = 3;
+    context.strokeStyle = '#fffdf7';
+    context.strokeText(label, x, y);
+    context.fillStyle = '#183c37';
+    context.fillText(label, x, y);
+  }
+}

@@ -97,11 +97,12 @@ export function bindTermMarkPractice(host, plan, stored, records, effects) {
 
   function paint() {
     section.hidden = !open || !enabled;
+    const success = checked && valid();
+    effects.status(success, checked);
     if (section.hidden) return;
     if (result) section.dataset.proofOutcome = result;
     effects.highlight(selected);
     reset.hidden = selected.length === 0;
-    const success = checked && valid();
     check.hidden = success;
     transfer.hidden = !success;
     section.dataset.result = checked ? success ? 'correct' : 'retry' : '';
@@ -109,7 +110,11 @@ export function bindTermMarkPractice(host, plan, stored, records, effects) {
     if (success) {
       feedback.textContent = (result === 'guided' ? '核对后找到了证据。' : '独立找到了证据。') + plan.reasoning;
     } else if (checked) {
-      feedback.textContent = '当前点了「' + names + '」。' + plan.reasoning + '请回到图里再试。';
+      const samePlaces = plan.ordered && [plan.indices, plan.alternate].filter(Boolean)
+        .some(marks => marks.every(point => selected.includes(point)));
+      feedback.textContent = '当前点了「' + names + '」。' + (samePlaces
+        ? '位置找齐了，顺序还不符合要求。按题目指定的起点重新排。'
+        : '这几处还不能组成题目要求的证据。先核对所选标记的方位、图例或读数，再换一处。');
     } else {
       feedback.textContent = selected.length ? '已点「' + names + '」。' : '';
     }

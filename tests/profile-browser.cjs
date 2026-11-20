@@ -41,7 +41,7 @@ const route = '#/lesson/8a-relief';
     await submit.click();
     assert.match(await currentReview.locator('[data-review-feedback]').innerText(), /降低 780 米/);
     assert.equal(await currentReview.getAttribute('data-assessment'), 'retry');
-    assert.match(await next.innerText(), /先留待重试/);
+    assert.equal(await next.isVisible(), false);
     const hint = currentReview.locator('[data-profile-pair-hint]');
     await hint.locator('summary').click();
     assert.doesNotMatch(await hint.locator('p').innerText(), /[ABCD0-9]|小丘|河谷/);

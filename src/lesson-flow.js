@@ -20,9 +20,11 @@ export function bindLessonFlow(root, initialStep, save) {
   const steps = [...root.querySelectorAll('[data-geo-step]')];
   const marks = root.querySelectorAll('.geo-flow-rail li');
   const position = root.querySelector('.geo-flow-position');
+  let active;
   function show(index, focus) {
     const step = steps[index];
     if (!step) return;
+    active = index;
     steps.forEach(item => { item.hidden = item !== step; });
     marks.forEach((mark, i) => {
       if (i === index) mark.setAttribute('aria-current', 'step');
@@ -38,7 +40,10 @@ export function bindLessonFlow(root, initialStep, save) {
   }
 
   steps.forEach((step, index) => {
-    step.querySelector('[data-geo-next]')?.addEventListener('click', () => show(index + 1, true));
+    const next = step.querySelector('[data-geo-next]');
+    next?.addEventListener('click', () => {
+      if (!next.hidden) show(index + 1, true);
+    });
     step.querySelector('[data-geo-back]')?.addEventListener('click', () => show(index - 1, true));
   });
   const start = steps.findIndex(step => step.dataset.geoStep === initialStep ||
@@ -46,5 +51,9 @@ export function bindLessonFlow(root, initialStep, save) {
   show(Math.max(0, start), false);
   return {
     show(id) { show(steps.findIndex(step => step.dataset.geoStep === id), true); },
+    verifyRestored() {
+      const firstIncomplete = steps.findIndex(step => step.querySelector('[data-geo-next][hidden]'));
+      if (firstIncomplete >= 0 && firstIncomplete < active) show(firstIncomplete, true);
+    },
   };
 }

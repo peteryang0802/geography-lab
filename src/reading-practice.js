@@ -1,4 +1,5 @@
 import { escapeHtml as escape } from './inquiry-view.js?v=6';
+import { paintAssessment } from './assessment.js?v=3';
 
 // Each prompt asks for a particular piece of the existing lesson material.
 const firstBookReading = {
@@ -43,6 +44,7 @@ export function renderReadingPractice(plan, saved) {
     </div>
     <p class="evidence" data-reading-excerpt>${Number.isInteger(saved?.selected) ? escape(plan.sources[saved.selected]?.text || '') : '点一条材料，读出它能提供什么线索。'}</p>
     <p class="lesson-reading-feedback" data-reading-feedback role="status"></p>
+    <p class="geo-assessment-label" data-assessment-label></p>
   </section>`;
 }
 
@@ -58,6 +60,7 @@ export function bindReadingPractice(root, plan, saved, save) {
   function paint() {
     controls.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selected)));
     if (outcome) scope.dataset.proofOutcome = outcome;
+    paintAssessment(scope, selected === null ? 'unchecked' : selected !== plan.answer ? 'retry' : outcome || 'previous');
     if (selected === null) return;
     scope.dataset.result = selected === plan.answer ? 'correct' : 'retry';
     const source = plan.sources[selected];
@@ -70,7 +73,7 @@ export function bindReadingPractice(root, plan, saved, save) {
   controls.forEach((button, index) => button.addEventListener('click', () => {
     selected = index;
     if (index === plan.answer) outcome ||= tried ? 'guided' : 'independent';
-    else tried = true;
+    else { tried = true; outcome = null; }
     save({ selected, tried, outcome });
     paint();
     if (feedback.getBoundingClientRect().bottom > innerHeight - 8) feedback.scrollIntoView({ block: 'nearest' });
