@@ -22,6 +22,7 @@ async function hold(browser, test) {
 const action = (page, name) => page.locator(`[data-challenge-action="${name}"]`);
 const option = (page, index) => page.locator(`[data-challenge-option="${index}"]`);
 const diagram = (page) => page.locator('.contour-challenge-map svg');
+const mark = (page, side) => page.locator(`[data-challenge-probe="${side}"]`).click();
 const timer = (page) => page.locator('[data-challenge-clock]');
 const selectedFeedback = (page) => page.locator('[data-challenge-feedback]');
 const score = (page) => page.locator('.contour-challenge-rail > p > span').textContent();
@@ -127,6 +128,16 @@ async function flow(page, questions) {
     if (index === 0) continue;
     assert.ok(await diagram(page).isVisible(), task.id);
     assert.equal(await timer(page).isVisible(), false, task.id);
+    if (task.diagram.probe) {
+      assert.equal(await option(page, 0).isVisible(), false);
+      await page.setViewportSize({width:1024, height:576});
+      await page.evaluate(() => scrollTo(0, 0));
+      await mark(page, 'east');
+      const mapBox = await diagram(page).boundingBox();
+      const optionsBox = await page.locator('.contour-challenge-options').boundingBox();
+      assert.ok(mapBox.x + mapBox.width < optionsBox.x && optionsBox.y + optionsBox.height < 576);
+      await page.setViewportSize({width:1280, height:720});
+    }
     await option(page, task.answer).click();
     assert.equal(await score(page), `${index + 1} / 10 分`, task.id);
     assert.doesNotMatch(await selectedFeedback(page).textContent(), /考法参考|期中第|期末第/, task.id);
@@ -136,12 +147,27 @@ async function flow(page, questions) {
       await action(page, 'next').click();
       assert.notEqual(await diagram(page).innerHTML(), finalMain);
       assert.match(await diagram(page).locator('title').textContent(), /桦谷/);
+      assert.equal(await option(page, 0).isVisible(), false);
+      await mark(page, 'east');
+      assert.equal(await option(page, 0).isVisible(), false);
+      await mark(page, 'west');
+      await option(page, 0).click();
       await option(page, task.variant.answer).click();
       assert.equal(await score(page), '10 / 10 分');
     }
     await action(page, 'next').click();
   }
   await page.getByRole('heading', { name: '收藏卡 · 读图领队' }).waitFor();
+  assert.match(await page.locator('[data-challenge-transfer-result]').innerText(), /订正后通过/);
+  await action(page, 'recheck').click();
+  assert.match(await diagram(page).locator('title').textContent(), /枫台/);
+  await page.reload();
+  assert.match(await diagram(page).locator('title').textContent(), /枫台/);
+  await mark(page, 'east');
+  await option(page, 1).click();
+  await action(page, 'next').click();
+  assert.match(await page.locator('.contour-challenge-screen').innerText(), /枫台新图巩固 · 首次独立通过/);
+  assert.equal(await score(page), '10 / 10 分');
   await page.reload();
   await page.getByRole('heading', { name: '收藏卡 · 读图领队' }).waitFor();
 }
@@ -177,6 +203,33 @@ async function directReturn(page) {
   assert.equal(await page.evaluate(key => localStorage.getItem(key), resumeKey), prior);
 }
 
+async function earlierProgressAndEvidenceScore(page, questions) {
+  const records = questions.map(task => ({ main:[task.answer], variant:[], timedOut:false }));
+  const start = { version:1, timed:false, collected:false, index:9, phase:'variant', remainingMs:30000, records };
+  await page.goto(base);
+  await page.evaluate(([key, saved]) => {
+    saved.records[9].variant = [0];
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, [stateKey, start]);
+  await page.goto(base + challenge);
+  await option(page, 0).waitFor();
+  assert.match(await option(page, 0).innerText(), /选西线/);
+  assert.equal(await option(page, 0).getAttribute('aria-pressed'), 'true');
+  assert.equal(await score(page), '10 / 10 分');
+
+  await page.evaluate(([key, saved]) => localStorage.setItem(key, JSON.stringify(saved)), [stateKey, start]);
+  await page.reload();
+  await page.locator('[data-challenge-probe="east"]').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await option(page, 0).isVisible(), false);
+  await page.locator('[data-challenge-probe="west"]').focus();
+  await page.keyboard.press('Space');
+  await option(page, questions.at(-1).variant.answer).click();
+  await action(page, 'next').click();
+  assert.equal(await score(page), '10 / 10 分');
+  assert.match(await page.locator('[data-challenge-transfer-result]').innerText(), /订正证据后通过/);
+}
+
 (async () => {
   const { questions } = await import('../src/contour-challenge-questions.js');
   assert.equal(questions.length, 10);
@@ -194,6 +247,7 @@ async function directReturn(page) {
     await hold(browser, page => flow(page, questions));
     await hold(browser, page => expiry(page, questions));
     await hold(browser, directReturn);
+    await hold(browser, page => earlierProgressAndEvidenceScore(page, questions));
     console.log('Contour challenge checked in Chrome at 1280×720.');
   } finally {
     await browser.close();

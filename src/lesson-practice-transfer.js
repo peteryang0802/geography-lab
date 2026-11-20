@@ -172,6 +172,15 @@ const transfers = {
       ['两处相同', '两处的无霜期不同。分别与 120 天比较。'],
     ],
   ],
+  '8b-south': [
+    '叠加线路，再比较两侧。哪一句有图上的证据？',
+    null,
+    2, [
+      ['东侧比西侧有更多贯通线路', '沿东侧数一数贯通南北的线路，再和左边对照。'],
+      ['两侧的线路疏密、走向都一样', '请一起显示铁路和公路，分别看两条线怎样连接各点。'],
+      ['西侧平原有连续的南北铁路和公路；中东部的公路更多沿谷地弯行', '这是教学图里的格局。地形提供了线路布局的一条解释，实际线路还受城市、工程等条件影响。'],
+    ],
+  ],
   '8b-tibetan': [
     '换一片高原地区，哪一处更值得先调查农田条件？',
     [['甲处', '高坡顶，较冷，离常年河流远。'], ['乙处', '较低的河谷台地，相对温暖，近常年河流。']],
@@ -208,6 +217,7 @@ const methods = {
   'earth-model': '先用纬度找到一条纬线，再用经度找到一条经线。它们的交点才是地点，转动地球仪也不会改变这个地点的经纬度。',
   'earth-motion': '看一个地方何时进入白天，先找到亮面与暗面的分界，再沿自转方向看它是从暗面走向亮面，还是反过来。',
   'land-ocean': '先在同一张图上定位出发和到达的两岸，再沿路线读两岸之间的海域名称。',
+  contours: '海拔在线上读。比较坡度时，在同一张图上用同一个等高距比较两段水平距离。想判断积水，还要找水的出路。',
   'climate-life': '先看坡面怎样把水引到低处，再找低处有没有檐沟、排水口等出路。',
   people: '比较人口密度，先分别用人数除以面积，再比每平方千米平均住多少人。',
   cooperation: '先按到货期限排除不合格方案，再从能按时到的方案中选费用最低的。',
@@ -222,6 +232,25 @@ function task(table, prefix, id) {
     options: options.map(([label, feedback]) => ({ label, feedback })) };
 }
 
-export const alignedTransfer = id => task(transfers, 'course-transfer-', id);
+const contourTransfer = {
+  id: 'course-transfer-contours-map', materialId: 'contours-map',
+  prompt: '沿青柳岭东西两条路线登到观景台。比较从第一条到第二条等高线的路段，哪一段更陡？',
+  options: [
+    { label: '西线路段更陡', feedback: '两段升高相同。请比较图上西线、东线各经过两条等高线的距离。' },
+    { label: '两段坡度相同', feedback: '起点同高、升高量也相同，还要看看两段之间的水平距离是否一样。' },
+    { label: '东线路段更陡', feedback: '同样升高一个等高距，东线路段的水平距离更短。按比例尺量的距离越短，这一段平均坡度越大。' },
+  ],
+  answer: 2,
+};
+
+export function alignedTransfer(id) {
+  if (id === 'contours') return contourTransfer;
+  const exercise = task(transfers, 'course-transfer-', id);
+  return id === '8b-south' ? { ...exercise, materialId: '8b-south-layered' } : exercise;
+}
+
+export function olderAlignedTasks(id) {
+  return id === 'contours' ? [{ ...task(transfers, 'course-transfer-', id), materialId: 'contours' }] : [];
+}
 export const alignedPractice = id => task(practices, 'course-practice-', id);
 export const alignedMethod = (id, fallback) => methods[id] ?? fallback;

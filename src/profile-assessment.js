@@ -1,5 +1,10 @@
 const markers = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+export function profileScopeTask(lesson) {
+  const scope = lesson.profilePractice?.scope;
+  return scope && { ...scope, id: 'course-profile-scope-' + lesson.id, figure: lesson.activity };
+}
+
 export function profileCourseTasks(lesson) {
   const config = lesson.profilePractice;
   if (!config) return [];

@@ -62,6 +62,12 @@
 .contour-challenge-map .map-west-text { fill: #0a5068; }
 .contour-challenge-map .map-east-text { fill: #842f16; }
 .contour-challenge-map .map-distance { fill: none; stroke: #0a5e76; stroke-width: 2.5; stroke-dasharray: 6 4; }
+.contour-challenge-map .map-probe { cursor: pointer; }
+.contour-challenge-map .map-probe-hit { fill: transparent; }
+.contour-challenge-map .map-probe-segment { stroke: #1c5945; stroke-width: 8; opacity: .45; stroke-linecap: round; }
+.contour-challenge-map .map-probe:is(:focus-visible,:hover) .map-probe-segment { stroke: #132f6b; opacity: .9; }
+.contour-challenge-proof { border-left: 4px solid #4d8068; background: #e1efe5; border-radius: 8px; padding: .6rem .7rem; }
+.contour-challenge-proof-summary { font-size: .84rem; color: #425f55; }
 .contour-challenge-options { display: grid; gap: .43rem; }
 .contour-challenge-options button {
   min-height: 41px;
@@ -96,6 +102,31 @@
   .contour-challenge-rail ol { display: grid; gap: .11rem; }
   .contour-challenge-rail li { display: flex; }
 }
-@media (min-width: 1050px) {
+@media (min-width: 920px) {
   .contour-challenge-stage.has-map { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
 }
+@media (min-width: 920px) and (max-height: 650px) {
+  .contour-challenge { grid-template-columns: minmax(9.8rem, 11.5rem) minmax(0, 1fr); margin-top: .7rem; }
+  .contour-challenge-rail ol { display: none; }
+  .contour-challenge-screen { padding: .75rem .9rem; }
+}
+.geo-transfer-layered svg { display: block; width: 100%; height: auto; }
+.geo-transfer-map-text { font: 700 15px system-ui, sans-serif; fill: #2b3c31; }
+.geo-transfer-layer-legend { display: flex; gap: .45rem .8rem; flex-wrap: wrap; align-items: center; margin-top: .46rem; font-size: .82rem; }
+.geo-transfer-layer-legend .button { padding: .35rem .55rem; }
+.geo-transfer-layer-legend i { display: inline-block; width: 1.4rem; margin-right: .2rem; border-top: 3px dashed #194d63; vertical-align: middle; }
+.geo-transfer-layer-legend span:last-child i { border-top: 3px solid #883723; }
+.china-relief-pair { display: grid; gap: .7rem; align-items: start; }
+.china-relief-figure { margin: 0; min-width: 0; }
+.china-relief-figure svg { display: block; width: 100%; height: auto; max-height: 185px; border-radius: 8px; }
+.china-relief-figure figcaption { font-size: .78rem; line-height: 1.42; color: #425c50; }
+.china-relief-figure figcaption ul { list-style: none; margin: .3em 0 0; padding: 0; display: flex; gap: .25em .55em; flex-wrap: wrap; }
+.china-relief-legend { display: flex; gap: .18rem .5rem; flex-wrap: wrap; }
+.china-relief-legend i { display: inline-block; width: .9rem; height: .65rem; border: 1px solid #857c60; border-radius: 2px; margin-right: .15rem; }
+.china-relief-profile text { font: 13px system-ui, sans-serif; fill: #213f36; }
+.china-relief-profile .relief-profile-letter, .relief-map-label { fill: #173742; stroke: #fff; stroke-width: 3px; paint-order: stroke; font: 700 19px system-ui,sans-serif; }
+.china-relief-answers { display: grid; gap: .35rem; margin-top: .6rem; }
+.china-relief-answers h3 { margin: 0; font-size: 1rem; }
+.china-relief-answers .term-feedback:empty { display: none; }
+.china-relief-answers .primary { justify-self: start; }
+@media (min-width: 790px) { .china-relief-pair { grid-template-columns: 1fr 1fr; } }

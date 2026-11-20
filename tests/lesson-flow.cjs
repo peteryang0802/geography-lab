@@ -31,6 +31,14 @@ async function prepareForward(lesson, current, step) {
     await current.locator('[data-term-proof-transfer]').click();
     return;
   }
+  if (step === 'relief-evidence') {
+    if (await current.locator('[data-relief-latitude="36"]').isVisible()) {
+      await current.locator('[data-relief-option="0"]').click();
+      await current.locator('[data-relief-transfer]').click();
+    }
+    await current.locator('[data-relief-option="1"]').click();
+    return;
+  }
   const { default: book } = await import(`../src/term-${id.slice(0, 2)}.js`);
   const entry = book.chapters.flatMap(chapter => chapter.lessons).find(lesson => lesson.id === id);
   if (step === 'term-observation') {

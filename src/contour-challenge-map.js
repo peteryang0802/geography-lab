@@ -7,11 +7,15 @@ const hills = {
     right: [412, 337, 279, 224], depth: [92, 68, 44, 22], first: 160, interval: 60, scale: 200 },
   birch: { title: '桦谷巡护图', middle: 270, y: 112, left: [27, 92, 168, 223],
     right: [412, 395, 368, 330], depth: [82, 61, 40, 21], first: 85, interval: 35, scale: 250 },
+  willow: { title: '青柳岭', middle: 269, y: 116, left: [40, 107, 188, 234],
+    right: [414, 391, 358, 322], depth: [88, 66, 45, 23], first: 90, interval: 30, scale: 160 },
+  maple: { title: '枫台巡山图', middle: 190, y: 106, left: [39, 72, 105, 146],
+    right: [408, 336, 273, 233], depth: [76, 59, 41, 24], first: 130, interval: 45, scale: 180 },
 };
 
-function mapFrame(title, description, body, scale, interval) {
-  return `<figure class="contour-challenge-map">
-    <svg viewBox="0 0 440 235" role="img" aria-labelledby="challenge-map-title challenge-map-description">
+function mapFrame(title, description, body, scale, interval, transferId, interactive = false) {
+  return `<figure class="contour-challenge-map"${transferId ? ` data-transfer-material="${transferId}"` : ''}>
+    <svg viewBox="0 0 440 235" role="${interactive ? 'group' : 'img'}" aria-labelledby="challenge-map-title challenge-map-description">
       <title id="challenge-map-title">${title}，教学示意图</title><desc id="challenge-map-description">${description}</desc>
       <rect x="1" y="1" width="438" height="233" rx="10" class="map-paper"/>
       ${body}
@@ -30,7 +34,14 @@ function marker(x, y, name, offsetX = 0, offsetY = -12) {
     <text class="map-label map-place" x="${x + offsetX}" y="${y + offsetY}">${name}</text>`;
 }
 
-function drawHill({ site, kind }) {
+export function contourRouteEvidence(diagram) {
+  if (!diagram?.probe) return null;
+  const {left, right, first, interval, scale} = hills[diagram.site];
+  const distance = [left[1] - left[0], right[0] - right[1]].map(delta => Math.round(delta * scale / 80));
+  return { first, last: first + interval, west: distance[0], east: distance[1], answer: distance[0] > distance[1] ? 'west' : 'east' };
+}
+
+function drawHill({ site, kind }, { transferId, interactive = false } = {}) {
   const { title, middle, y, left, right, depth, first, interval, scale } = hills[site];
   const levels = left.map((west, index) => {
     const east = right[index];
@@ -52,6 +63,12 @@ function drawHill({ site, kind }) {
     const crossings = index => left.map((west, i) => Math.round(Math.abs((index ? right[i] - right[0] : west - left[0]) * scale / 80))).join('、');
     description = `西、东起点均在 ${first} 米线，西侧是虚线，东侧是点线，都通向观景台。` +
       `从各自起点量起，西线依次经过距起点约 ${crossings(false)} 米的各等高线；东线依次经过约 ${crossings(true)} 米的各等高线。`;
+    if (interactive) {
+      marks += [[left, 'west', '西线'], [right, 'east', '东线']].map(([xs, side, label]) =>
+        `<g class="map-probe map-probe-${side}" role="button" tabindex="0" data-challenge-probe="${side}" aria-label="${label}从 ${first} 米到 ${first + interval} 米的一段">
+          <rect class="map-probe-hit" x="${Math.min(xs[0], xs[1])}" y="${y - 13}" width="${Math.abs(xs[1] - xs[0])}" height="26"/><path class="map-probe-segment" d="M${xs[0]} ${y}H${xs[1]}"/>
+        </g>`).join('');
+    }
   } else if (kind === 'range') {
     marks = marker((left[1] + left[2]) / 2, y, 'P');
     description = `P 点落在 ${first + interval} 米和 ${first + 2 * interval} 米两条等高线之间。`;
@@ -62,7 +79,7 @@ function drawHill({ site, kind }) {
     marks = marker(left[0], y, 'A', 6) + marker(left[2], y, 'B');
     description = `A 在 ${first} 米等高线上，B 在 ${first + 2 * interval} 米等高线上。`;
   }
-  return mapFrame(title, `${description}上北下南。比例尺一格为 ${scale} 米。海拔单位米。`, levels + marks, scale, interval);
+  return mapFrame(title, `${description}上北下南。比例尺一格为 ${scale} 米。海拔单位米。`, levels + marks, scale, interval, transferId, interactive);
 }
 
 function drawBend({ site }) {
@@ -121,9 +138,9 @@ function drawScale({ site }) {
     topographic + route, scale, interval);
 }
 
-export function renderContourMap(diagram) {
+export function renderContourMap(diagram, settings) {
   if (diagram.kind === 'bend') return drawBend(diagram);
   if (diagram.kind === 'saddle') return drawSaddle(diagram);
   if (diagram.kind === 'scale') return drawScale(diagram);
-  return drawHill(diagram);
+  return drawHill(diagram, settings);
 }

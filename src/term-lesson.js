@@ -2,10 +2,11 @@ import { bindPrediction, escapeHtml as escape, methodSummary, renderComparison, 
 import { mountTermDiagram } from './term-diagram.js?v=3';
 import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=3';
 import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=4';
-import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=2';
+import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=3';
 import { assessmentState, paintAssessment } from './assessment.js?v=3';
-import { profileCourseTasks } from './profile-assessment.js?v=1';
-import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=2';
+import { profileCourseTasks, profileScopeTask } from './profile-assessment.js?v=2';
+import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=3';
+import { chinaReliefMarkup, chinaReliefTasks, mountChinaRelief } from './china-relief-section.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -182,44 +183,7 @@ function compareProfilePoints(activity, picks) {
   };
 }
 
-function profilePracticeMarkup(practice) {
-  return `<section class="term-fold term-profile-scope" data-profile-scope aria-labelledby="profile-scope-title">
-    <h2 id="profile-scope-title" tabindex="-1">${escape(practice.scope.prompt)}</h2>
-    <div class="term-choices" role="group" aria-labelledby="profile-scope-title">
-      ${practice.scope.options.map(([label], index) => `<button type="button" class="button" data-scope-choice="${index}" aria-pressed="false">${escape(label)}</button>`).join('')}
-    </div>
-    <p class="term-feedback" data-scope-feedback role="status"></p>
-    <button type="button" class="button" data-profile-source hidden>看看剖面两端 →</button>
-  </section>`;
-}
-
-function bindProfilePractice(root, config, practice, save, recheck) {
-  if (!config) return;
-  const scope = root.querySelector('[data-profile-scope]');
-  const options = [...scope.querySelectorAll('[data-scope-choice]')];
-  const feedback = scope.querySelector('[data-scope-feedback]');
-  const source = scope.querySelector('[data-profile-source]');
-  function paint() {
-    const selected = Number.isInteger(practice.scopeChoice) ? options[practice.scopeChoice] : null;
-    const correct = selected && practice.scopeChoice === config.scope.answer;
-    options.forEach(button => button.setAttribute('aria-pressed', String(button === selected)));
-    feedback.textContent = selected ? (correct ? '找对了。' : '再看看。') + config.scope.options[practice.scopeChoice][1] : '';
-    scope.dataset.result = selected ? (correct ? 'correct' : 'retry') : '';
-    source.hidden = !selected || correct;
-    paintAssessment(scope, !selected ? 'unchecked' : correct ? 'guided' : 'retry');
-  }
-  for (const option of options) {
-    option.addEventListener('click', () => {
-      practice.scopeChoice = Number(option.dataset.scopeChoice);
-      save();
-      paint();
-    });
-  }
-  source.addEventListener('click', recheck);
-  paint();
-}
-
-function reviewMarkup(review) {
+function reviewMarkup(review, scope = false) {
   const figure = review.figure ? `<figure class="term-figure">
     ${plotMarkup(review.figure)}<figcaption>${escape(review.figure.caption)}</figcaption></figure>` :
     renderTransferMaterial(review.materialId);
@@ -229,9 +193,9 @@ function reviewMarkup(review) {
     </div><details class="geo-material-fold" data-profile-pair-hint>
       <summary>给一点读图提示</summary><p>${escape(review.hint)}</p></details>` :
     `<div class="term-choices" role="group" aria-label="选择材料支持的解释">
-      ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
+      ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" ${scope ? `data-scope-choice="${i}"` : ''} aria-pressed="false">${escape(label)}</button>`).join('')}
     </div>`;
-  return `<section class="term-review${figure ? ' term-review-visual' : ''}" data-term-review data-task-id="${escape(review.id)}">
+  return `<section class="term-review${figure ? ' term-review-visual' : ''}" data-term-review ${scope ? 'data-profile-scope' : ''} data-task-id="${escape(review.id)}">
     <h3 class="geo-review-prompt" tabindex="-1">${escape(review.prompt)}</h3>
     ${review.evidence ? renderComparison(review.evidence) : ''}
     <div class="term-review-body">${figure}<div class="term-review-controls">${selection}
@@ -246,13 +210,24 @@ function termReviewTask(entry, taskId) {
   const legacy = { ...entry.review, id: 'review-' + entry.id };
   const transfer = alignedTransfer(entry.id);
   if (!transfer) return { ...legacy, materialId: entry.id };
-  if (taskId === legacy.id) return legacy;
-  return { ...transfer, materialId: entry.id, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
+  if (taskId === legacy.id) return transfer.materialId ? { ...legacy, materialId: entry.id } : legacy;
+  return { ...transfer, materialId: transfer.materialId || entry.id, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
 }
 
 export function renderTermPractice(root, { entry, learning, taskId, initialStep, onStep }) {
+  const reliefTask = chinaReliefTasks(entry).find(task => task.id === taskId);
+  if (reliefTask) {
+    const { latitude } = reliefTask;
+    const getAssessment = () => learning.state.answers[reliefTask.id];
+    root.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">
+      <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>${chinaReliefMarkup()}</article>`;
+    mountChinaRelief(root, { choices: { [latitude]: getAssessment()?.option } }, (_, __, choice) => {
+      learning.answerTask(reliefTask.id, choice, choice === reliefTask.answer);
+    }, { fixedLatitude: latitude, getAssessment });
+    return;
+  }
   const profile = profileCourseTasks(entry);
-  const match = profile.find(task => task.id === taskId);
+  const match = [profileScopeTask(entry), ...profile].find(task => task?.id === taskId);
   const tasks = match ? [match] : profile.length && !taskId ? profile : [termReviewTask(entry, taskId)];
   const flow = tasks.length > 1 ? lessonFlow(tasks.map((task, index) => ({
     id: 'practice-' + index, label: ['找局部反例', '判断趋势和局部'][index], content: reviewMarkup(task),
@@ -287,6 +262,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
   const profileReviews = profileCourseTasks(entry);
+  const scope = profileScopeTask(entry);
   const practiceReview = profileReviews[0] || termReviewTask(entry);
   const legacyReview = practiceReview.id === 'review-' + entry.id;
   const choices = activity.choices.map(item => item.label);
@@ -349,7 +325,8 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     ${lessonFlow([
       { id: 'opening', label: '带着问题', content: opening, next: '看图找线索' },
       { id: 'term-observation', label: '看图找线索', content: observation, next: profilePractice ? '用剖面作判断' : '记住读图方法' },
-      ...(profilePractice ? [{ id: 'profile', label: '用剖面作判断', content: profilePracticeMarkup(profilePractice), next: '记住读图方法' }] : []),
+      ...(scope ? [{ id: 'profile', label: '用剖面作判断', content: reviewMarkup(scope, true), next: '在真地图认三级阶梯' }] : []),
+      ...(entry.id === '8a-relief' ? [{ id: 'relief-evidence', label: '在真地图认三级阶梯', content: chinaReliefMarkup(), next: '记住读图方法' }] : []),
       { id: 'method', label: '记住读图方法', content: methodSummary(alignedMethod(entry.id, entry.takeaway)), next: '换份材料复习' },
       { id: 'term-review', label: profilePractice ? '换个剖面找反例' : '换份材料复习', content: review,
         next: profilePractice ? '再判一次整体与局部' : '回顾这节课' },
@@ -583,15 +560,30 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     },
   });
   paintComparison();
-  bindProfilePractice(root, profilePractice, practice, save, () => {
-    practice.viewingEnds = true;
-    picks = [0, records.length - 1];
-    setComparing(true);
-    flow.show('term-observation');
-    const title = comparePanel.querySelector('h2');
-    title.focus();
-    alignTermBoard(host, title, compareResult);
-  });
+  const disposeScope = scope ? bindReview(root, scope, scope.id, learning) : null;
+  if (entry.id === '8a-relief') {
+    const forward = root.querySelector('[data-geo-step="relief-evidence"] [data-geo-next]');
+    const hadReachedLater = ['method', 'term-review', 'term-apply', 'recap', 'profile-transfer'].includes(initialStep);
+    const regionalRelief = { ...practice.regionalRelief, choices: { ...practice.regionalRelief?.choices } };
+    const reliefTasks = new Map(chinaReliefTasks(entry).map(task => [task.latitude, task]));
+    const getAssessment = latitude => learning.state.answers[reliefTasks.get(latitude).id];
+    for (const [latitude, task] of reliefTasks) {
+      const stored = getAssessment(latitude);
+      if (stored?.option !== undefined) regionalRelief.choices[latitude] = stored.option;
+      else if (task.options[regionalRelief.choices[latitude]]) {
+        const option = regionalRelief.choices[latitude];
+        learning.setRecord('answers', task.id, { option, solved: option === task.answer, firstCorrect: false });
+      }
+    }
+    forward.hidden = !hadReachedLater && regionalRelief.choices[32] !== reliefTasks.get(32).answer;
+    mountChinaRelief(root, regionalRelief, (result, latitude, choice) => {
+      const task = reliefTasks.get(latitude);
+      if (task) learning.answerTask(task.id, choice, choice === task.answer);
+      practice.regionalRelief = result;
+      forward.hidden = result.choices[32] !== reliefTasks.get(32).answer;
+      save();
+    }, { getAssessment });
+  }
   const disposeReview = bindReview(root, practiceReview, practiceReview.id, learning, legacyReview ? reviewPick : undefined, legacyReview ? value => {
     reviewPick = value;
     save();
@@ -621,6 +613,6 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   if (photoPanel) photoPanel.addEventListener('toggle', () => {
     if (photoPanel.open && !photoRunner) photoRunner = onPhotos(photoPanel.querySelector('[data-term-gallery]'));
   });
-  return () => { diagram?.dispose(); openingDiagram?.dispose(); disposeReview(); disposeApplication?.();
+  return () => { diagram?.dispose(); openingDiagram?.dispose(); disposeScope?.(); disposeReview(); disposeApplication?.();
     unmountTransfer(); globeRunner?.(); photoRunner?.(); };
 }

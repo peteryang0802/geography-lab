@@ -16,9 +16,9 @@ import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, 
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } from './reading-practice.js';
 import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=4';
-import { alignedPractice, alignedTransfer } from './lesson-practice-transfer.js?v=2';
+import { alignedPractice, alignedTransfer, olderAlignedTasks } from './lesson-practice-transfer.js?v=3';
 import { mountParentSettings } from './parent-settings.js';
-import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=2';
+import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=3';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -37,7 +37,7 @@ function activeTasks(lesson) {
   return [alignedPractice(lesson.id) || lesson.tasks[0], transfer || lesson.tasks[1]];
 }
 const tasksByLesson = new Map(allLessons.map(lesson => {
-  const tasks = new Map([...activeTasks(lesson), ...lesson.tasks].map(task => [task.id, task]));
+  const tasks = new Map([...activeTasks(lesson), ...olderAlignedTasks(lesson.id), ...lesson.tasks].map(task => [task.id, task]));
   return [lesson.id, [...tasks.values()]];
 }));
 const byConcept = new Map(concepts.map(concept => [concept.id, concept]));
@@ -64,6 +64,15 @@ const learning = createLearningStore({
   },
 });
 const { state } = learning;
+
+function restoreLegacyProfileScope() {
+  const option = state.widgets['8a-relief']?.profilePractice?.scopeChoice;
+  const id = 'course-profile-scope-8a-relief';
+  const task = tasksByLesson.get('8a-relief')?.find(item => item.id === id);
+  if (!state.answers[id] && Number.isInteger(option) && task?.options.length > option && option >= 0) {
+    learning.setRecord('answers', id, { option, solved: option === task.answer, firstCorrect: false });
+  }
+}
 
 const lessonUrl = id => '#/lesson/' + encodeURIComponent(id);
 const conceptUrl = (id, origin) => '#/concept/' + encodeURIComponent(id) + (origin ? '?from=' + encodeURIComponent(origin) : '');
@@ -165,7 +174,8 @@ function taskHtml(task, index, inline = false, materialId) {
   const selected = state.answers[task.id]?.option;
   const active = Number.isInteger(selected) && task.options[selected];
   const correct = selected === task.answer;
-  const visual = materialId ? renderTransferMaterial(materialId) : '';
+  const diagram = task.materialId || materialId;
+  const visual = diagram ? renderTransferMaterial(diagram) : '';
   return `<article class="task" data-task="${escape(task.id)}"${active ? ` data-result="${correct ? 'correct' : 'retry'}"` : ''}>
     <header>${inline ? '' : `<span aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>`}<h3 id="task-${escape(task.id)}">${escape(task.prompt)}</h3></header>
     <div class="geo-transfer-layout${visual ? ' has-visual' : ''}">${visual}<div class="geo-transfer-controls">
@@ -952,7 +962,7 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const dataVersion = id === '8a' ? 7 : id === '7b' ? 6 : 4;
+    const dataVersion = id === '8a' ? 8 : id === '7b' ? 6 : 4;
     const url = new URL(`./term-${id}.js?v=${dataVersion}${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
@@ -978,7 +988,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=12', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=13', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson, renderTermPractice}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
@@ -1057,7 +1067,7 @@ function showContourChallenge(version) {
   async function open() {
     main.innerHTML = pageIntro('等高线与路线选择', '正在准备闯关地图……');
     try {
-      const url = new URL('./contour-challenge.js?v=1', import.meta.url);
+      const url = new URL('./contour-challenge.js?v=2', import.meta.url);
       if (retries) url.searchParams.set('retry', retries);
       const { mountContourChallenge } = await import(url.href);
       if (renderVersion !== version) return;
@@ -1098,6 +1108,7 @@ function render() {
   cleanup = null;
   activeHash = next;
   learning.refresh();
+  if (!resettingLearning) restoreLegacyProfileScope();
   const { page, id, query } = routeParts(next);
   const lesson = page === 'lesson' ? byLesson.get(id) : null;
   const expanded = ['lesson', 'practice'].includes(page) ? termEntryById.get(id) : null;
