@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { chromium, webkit } = require(process.env.GEOLAB_PLAYWRIGHT || 'playwright');
+const { moveTo } = require('./lesson-flow.cjs');
 
 const base = process.env.GEOLAB_URL || 'http://127.0.0.1:8773/';
 const snapshots = process.env.GEOLAB_SCREENSHOTS;
@@ -76,8 +77,10 @@ async function check(engine, name, viewport) {
         await go('#/lesson/' + entry.id);
         const lesson = page.locator('[data-extended-lesson="' + entry.id + '"]');
         await lesson.waitFor();
-        assert.equal(await lesson.locator('h1').innerText(), entry.question, entry.id);
-        assert.match(await lesson.locator('.term-anchor summary').innerText(), new RegExp(String(entry.page)));
+        assert.equal(await lesson.locator('h1').innerText(), entry.title, entry.id);
+        assert.equal(await lesson.locator('.geo-opening h3').innerText(), entry.question, entry.id);
+        assert.match(await lesson.locator('.term-bookname').innerText(), new RegExp(String(entry.page)));
+        await moveTo(lesson, 'term-observation');
         const station = lesson.locator('.term-station');
         const point = station.locator('[data-bar], [data-key]').first();
         await point.click();
@@ -97,18 +100,20 @@ async function check(engine, name, viewport) {
         });
         if (name !== 'desktop' && (display.top < -1 || display.bottom > display.height + 1)) tallBoards.push([entry.id, display]);
         if (index === 0) await screenshot(book + '-station');
+        await moveTo(lesson, 'term-review');
+        const review = lesson.locator('[data-term-review]');
+        await review.locator('[data-term-answer]').nth((entry.review.answer + 1) % entry.review.options.length).click();
+        assert.equal(await review.getAttribute('data-result'), 'retry');
+        await review.locator('[data-term-answer]').nth(entry.review.answer).click();
+        assert.equal(await review.getAttribute('data-result'), 'correct');
+        assert.ok((await review.locator('[role=status]').innerText()).endsWith(entry.review.options[entry.review.answer][1]));
+        await moveTo(lesson, 'recap');
         if (entry.project) {
           const draft = lesson.locator('#term-project-note');
           await lesson.locator('summary').filter({hasText: '写下我的探究方案'}).click();
           await draft.fill('我会记录同一地点的两次观察。');
           assert.match(await lesson.locator('.term-note-status').innerText(), /已更新/);
         }
-        const review = lesson.locator('[data-term-review]');
-        await review.locator('summary').click();
-        await review.locator('[data-term-answer]').nth(entry.review.answer).click();
-        assert.ok((await review.locator('[role=status]').innerText()).endsWith(entry.review.options[entry.review.answer][1]));
-        await review.locator('[data-term-retry]').click();
-        assert.equal(await review.locator('button[aria-pressed=true]').count(), 0);
         const next = lesson.locator('.next-lesson');
         assert.equal(await next.getAttribute('href'), entries[index + 1] ? '#/lesson/' + entries[index + 1].id : '#/term/' + book);
         await fit(entry.id);
@@ -119,6 +124,7 @@ async function check(engine, name, viewport) {
     }
     await go('#/lesson/8a-water');
     const water = page.locator('[data-extended-lesson="8a-water"]');
+    await moveTo(water, 'term-observation');
     const compare = water.locator('[data-term-compare]');
     const compareResult = water.locator('[data-term-compare-result]');
     await compare.click();
@@ -135,7 +141,7 @@ async function check(engine, name, viewport) {
     assert.equal(await water.locator('[data-bar][aria-pressed="true"]').count(), 0);
     await compare.click();
     assert.ok(await water.locator('[data-term-see]').isVisible());
-    await water.locator('.volume-back').click();
+    await page.locator('[data-nav=home]').click();
     const waterEntry = page.locator('[data-volume-entry="8a-water"]');
     assert.equal(await waterEntry.getAttribute('aria-current'), 'location');
     await page.waitForFunction(() => document.activeElement?.dataset.volumeEntry === '8a-water');
@@ -163,7 +169,9 @@ async function checkOptionalAndRecovery() {
     await page.locator('[data-extended-lesson="7b-asia"]').waitFor();
     assert.ok(fetched.every(url => !/\/three-runtime\.js|\/assets\/gallery\//.test(url)));
 
-    await page.locator('[data-term-photos] summary').click();
+    await moveTo(page.locator('[data-extended-lesson="7b-asia"]'), 'recap');
+    await page.locator('[data-remember=term-extras] > summary').click();
+    await page.locator('[data-term-photos] > summary').click();
     const gallery = page.locator('[data-term-gallery]');
     await gallery.locator('.gallery-slide[data-image-state=loaded]').first().waitFor();
     const caption = await gallery.locator('[data-active-caption]').innerText();
@@ -179,7 +187,7 @@ async function checkOptionalAndRecovery() {
     await page.locator('[data-term-globe-stage][data-three-state=three]').waitFor({timeout: 12_000});
     await globe.locator('[data-toggle-view]').click();
     await page.locator('[data-term-globe-stage][data-three-state=flat]').waitFor();
-    await page.locator('.term-lesson a.volume-back').click();
+    await page.locator('[data-nav=home]').click();
     await page.waitForFunction(() => document.activeElement?.dataset.volumeEntry === '7b-asia');
 
     await page.route('**/src/term-8b.js*', route => route.abort());

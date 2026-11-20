@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const { chromium } = require(process.env.GEOLAB_PLAYWRIGHT || 'playwright');
+const { moveTo } = require('./lesson-flow.cjs');
 
 const origin = process.env.GEOLAB_URL || 'http://127.0.0.1:8773/';
 const round = Number(process.env.GEOLAB_ROUND || 1);
@@ -14,6 +15,8 @@ const { width, height } = [{ width: 360, height: 640 }, { width: 390, height: 84
 const url = (view, hash = view === 'recall' ? '#/term/7a' : '#/') => new URL('?view=' + view + hash, origin).href;
 const go = (p, hash) => p.evaluate(hash => { location.hash = hash; }, hash);
 const section = name => '[data-inquiry-section="' + name + '"]';
+const course = (page, id) => page.locator('[data-inquiry-lesson="' + id + '"]');
+const extraNotes = page => page.locator('[data-remember=lesson-extras] > summary');
 
 async function checkWidth(page) {
   const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, layout: innerWidth }));
@@ -87,8 +90,9 @@ async function verifyTransfer(page, lesson, id) {
 }
 
 async function verifyLesson(page, id, next) {
-  const lesson = page.locator('[data-inquiry-lesson="' + id + '"]');
+  const lesson = course(page, id);
   await lesson.waitFor();
+  await moveTo(lesson, 'evidence');
   await verifyPrimary(page, lesson, id);
   if (id === 'land-ocean') {
     assert.equal(await lesson.locator('.inquiry-copy').count(), 0, 'inline evidence replaces reading paragraphs');
@@ -97,20 +101,24 @@ async function verifyLesson(page, id, next) {
     assert.equal(await lesson.locator('.world-ratio-bar').count(), 1);
   } else {
     assert.ok(await lesson.locator('.inquiry-copy > section').count() >= 2, id);
-    await verifyTransfer(page, lesson, id);
   }
+  await moveTo(lesson, 'reading');
+  for (const img of await lesson.locator('.inquiry-photo img:visible').all()) {
+    await img.scrollIntoViewIfNeeded();
+    await img.evaluate(image => image.decode());
+  }
+  await moveTo(lesson, 'recap');
+  await extraNotes(page).click();
+  if (id !== 'land-ocean') await verifyTransfer(page, lesson, id);
   assert.equal(await lesson.locator(section('outside')).getByRole('heading').innerText(),
     id === 'land-ocean' ? '换张地图试一试' : '课外观察');
+  await extraNotes(page).click();
   assert.equal(await lesson.locator('a:visible').count(), 1, id + ' visible exits');
   assert.equal(await lesson.locator('.next-lesson').getAttribute('href'), next ? '#/lesson/' + next : '#/textbook');
   assert.ok(await page.evaluate(() => {
     const outside = document.querySelector('.inquiry-outside');
     return Boolean(outside.compareDocumentPosition(document.querySelector('.course-next')) & Node.DOCUMENT_POSITION_FOLLOWING);
   }), id);
-  for (const img of await lesson.locator('.inquiry-photo img').all()) {
-    await img.scrollIntoViewIfNeeded();
-    await page.waitForFunction(() => [...document.querySelectorAll('.inquiry-photo img')].every(item => item.naturalWidth > 0));
-  }
   await checkWidth(page);
 }
 
@@ -134,6 +142,7 @@ async function sameLabScreen(page) {
 
 async function importantFlows(page) {
   await go(page, '#/lesson/contours');
+  await moveTo(course(page, 'contours'), 'evidence');
   await page.locator('[data-rain-test]').waitFor();
   const route = new URL(page.url()).hash;
   const canvas = page.locator('.rain-inquiry canvas');
@@ -147,6 +156,7 @@ async function importantFlows(page) {
   assert.notEqual(await snap(), puddle);
   assert.match(await page.locator('.rain-inquiry [role="status"]').innerText(), /排水/);
   assert.equal(new URL(page.url()).hash, route);
+  await moveTo(course(page, 'contours'), 'activity-lab');
   const beforeWalk = page.locator('[data-activity="contours-lab-contour"]');
   await beforeWalk.scrollIntoViewIfNeeded();
   await page.locator('#lab-walk').waitFor();
@@ -158,8 +168,11 @@ async function importantFlows(page) {
   await page.locator('[data-activity="contours-lab-contour"][data-three-state=three]').waitFor();
   await sameLabScreen(page);
   await page.reload();
+  await moveTo(course(page, 'contours'), 'evidence');
   await page.locator('[data-rain-drain]').waitFor();
   assert.equal(await page.locator('[data-rain-drain]').getAttribute('aria-pressed'), 'true');
+  await moveTo(course(page, 'contours'), 'recap');
+  await extraNotes(page).click();
   const slopes = page.locator('[data-activity=contours-transfer]');
   await slopes.scrollIntoViewIfNeeded();
   await slopes.locator('[data-transfer-action]').click();
@@ -169,11 +182,13 @@ async function importantFlows(page) {
   await slopes.locator('[data-transfer-action]').click();
 
   await go(page, '#/lesson/maps');
+  await moveTo(course(page, 'maps'), 'evidence');
   const keys = page.locator('[data-legend-pick]');
   await keys.first().waitFor();
   assert.ok(await keys.count() >= 4);
   await keys.last().click();
   assert.match(await page.locator('.legend-inquiry [role="status"]').innerText(), /注记|海拔/);
+  await moveTo(course(page, 'maps'), 'activity-direction');
   const direction = page.locator('[data-activity=maps-direction]');
   await direction.scrollIntoViewIfNeeded();
   await direction.locator('[data-example=north-arrow]').click();
@@ -183,6 +198,7 @@ async function importantFlows(page) {
   assert.equal(new URL(page.url()).hash, '#/lesson/maps');
 
   await go(page, '#/lesson/earth-motion');
+  await moveTo(course(page, 'earth-motion'), 'evidence');
   await page.locator('[data-day-pair]').waitFor();
   await page.locator('[data-day-pair]').click();
   await setRange(page, '#lab-month', 12);
@@ -190,6 +206,7 @@ async function importantFlows(page) {
   await sameLabScreen(page);
 
   await go(page, '#/lesson/land-ocean');
+  await moveTo(course(page, 'land-ocean'), 'evidence');
   const world = page.locator('[data-world-activity]');
   const map = world.locator('canvas');
   await map.waitFor();
@@ -206,11 +223,13 @@ async function importantFlows(page) {
   }
   await world.locator('[data-world-labels]').click();
 
+  await moveTo(course(page, 'land-ocean'), 'activity-landform');
   const landform = page.locator('[data-activity=land-ocean-landform]');
   await landform.scrollIntoViewIfNeeded();
   await landform.locator('[data-landform-spot=plateau]').click();
   assert.match(await landform.locator('[data-landform-feedback]').innerText(), /高原|平缓|起伏小/);
   await sameScreen(landform, ['canvas', 'button', '[role=status]']);
+  await moveTo(course(page, 'land-ocean'), 'activity-seafloor');
   const seafloor = page.locator('[data-activity=land-ocean-seafloor]');
   await seafloor.scrollIntoViewIfNeeded();
   await seafloor.locator('[data-seafloor-stop=slope]').click();
@@ -228,6 +247,8 @@ async function importantFlows(page) {
   await gallery.locator('[data-next]').click();
   await gallery.locator('[data-next]').click();
   await page.waitForFunction(() => document.querySelector('[data-inline-photos] [data-count]')?.textContent === '3 / 3');
+  await moveTo(course(page, 'land-ocean'), 'recap');
+  await extraNotes(page).click();
   const check = page.locator('[data-activity=land-ocean-world-check]');
   await check.scrollIntoViewIfNeeded();
   const checkMap = check.locator('canvas');
@@ -241,15 +262,19 @@ async function importantFlows(page) {
   assert.ok(fitsInViewport, 'regional map and answer choices fit in one screen');
   assert.equal(new URL(page.url()).hash, '#/lesson/land-ocean');
   await page.reload();
+  await moveTo(course(page, 'land-ocean'), 'activity-seafloor');
   await page.locator('[data-activity="land-ocean-lab-globe"]').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector('[data-inline-photos] [data-count]')?.textContent === '3 / 3');
+  await moveTo(course(page, 'land-ocean'), 'evidence');
   assert.equal(await world.getAttribute('data-world-active-route'), 'atlantic');
   assert.equal(await world.getAttribute('data-world-revealed'), 'true');
+  await moveTo(course(page, 'land-ocean'), 'recap');
   await check.scrollIntoViewIfNeeded();
   assert.equal(await check.getByRole('button', { name: '印度洋' }).getAttribute('aria-pressed'), 'true');
   await checkWidth(page);
 
   await go(page, '#/lesson/weather');
+  await moveTo(course(page, 'weather'), 'evidence');
   const weather = page.locator('[data-activity=weather-chart-weather]');
   const forecast = weather.locator('canvas');
   await forecast.waitFor();
@@ -287,9 +312,10 @@ async function screenshotSet(browser, view) {
   const shot = (name) => p.screenshot({ path: output + '/' + view + '-' + name + '.png', animations: 'disabled' });
   await shot('01-home');
   await p.goto(url(view, '#/lesson/contours'));
-  await p.locator('[data-rain-test]').waitFor();
+  await course(p, 'contours').waitFor();
   await p.evaluate(() => scrollTo(0, 0));
   await shot('02-opening');
+  await moveTo(course(p, 'contours'), 'evidence');
   await p.locator('[data-rain-predict=low]').click();
   await p.locator('[data-rain-test]').click();
   await p.locator('.rain-inquiry').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -297,18 +323,23 @@ async function screenshotSet(browser, view) {
   await p.locator('[data-rain-drain]').click();
   await p.locator('.rain-inquiry').evaluate(el => el.scrollIntoView({ block: 'start' }));
   await shot('03-observe');
+  await moveTo(course(p, 'contours'), 'activity-lab');
   await p.locator('[data-activity="contours-lab-contour"]').scrollIntoViewIfNeeded();
   await p.locator('#lab-walk').waitFor();
   await setRange(p, '#lab-walk', 7);
   await p.locator('.lab-stage').evaluate(el => el.scrollIntoView({ block: 'start' }));
   await shot('09-second-activity');
+  await moveTo(course(p, 'contours'), 'reading');
   await p.locator(section('reading')).evaluate(el => el.scrollIntoView({ block: 'start' }));
   await shot('04-read');
+  await moveTo(course(p, 'contours'), 'recap');
+  await extraNotes(p).click();
   await p.locator(section('outside')).evaluate(el => el.scrollIntoView({ block: 'start' }));
   await shot('05-outside');
   await p.close();
   const landscape = await browser.newPage({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
   await landscape.goto(url(view, '#/lesson/contours'));
+  await moveTo(course(landscape, 'contours'), 'evidence');
   await landscape.locator('[data-rain-test]').click();
   await landscape.locator('[data-rain-drain]').click();
   await landscape.locator('.rain-inquiry').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -316,10 +347,12 @@ async function screenshotSet(browser, view) {
   await landscape.close();
   const desktop = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   await desktop.goto(url(view, '#/lesson/contours'));
+  await moveTo(course(desktop, 'contours'), 'evidence');
   await desktop.locator('[data-rain-test]').waitFor();
   await desktop.locator('[data-rain-test]').click();
   await desktop.screenshot({ path: output + '/' + view + '-10-desktop-rain.png', animations: 'disabled' });
   await desktop.goto(url(view, '#/lesson/maps'));
+  await moveTo(course(desktop, 'maps'), 'evidence');
   await desktop.locator('[data-legend-pick]').first().click();
   await desktop.screenshot({ path: output + '/' + view + '-07-desktop.png', animations: 'disabled' });
   await desktop.close();

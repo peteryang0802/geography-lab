@@ -309,6 +309,7 @@ export function mountWorldCheck(host, question, saved, onChange) {
     }
     feedback.textContent = selected === '印度洋' ? '找到了。路线跨过印度洋。'
       : selected ? '再看看两个岸标之间的这片海。' : '';
+    feedback.dataset.result = selected === '印度洋' ? 'correct' : selected ? 'retry' : '';
     draw();
   }
 

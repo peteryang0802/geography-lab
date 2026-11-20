@@ -59,6 +59,7 @@ export function bindReadingPractice(root, plan, saved, save) {
     controls.forEach((button, index) => button.setAttribute('aria-pressed', String(index === selected)));
     if (outcome) scope.dataset.proofOutcome = outcome;
     if (selected === null) return;
+    scope.dataset.result = selected === plan.answer ? 'correct' : 'retry';
     const source = plan.sources[selected];
     excerpt.textContent = source.text;
     feedback.textContent = selected === plan.answer

@@ -65,12 +65,11 @@ export function renderTermMarkPractice(plan) {
     <p class="term-proof-guide">在上方的图或读数列表中${plan.ordered ? '按题目顺序' : ''}点选 ${plan.indices.length} 处，再核对。</p>
     <div class="term-proof-actions">
       <button class="button primary" type="button" data-term-proof-check>核对我选的证据</button>
-      <button class="button" type="button" data-term-proof-chart>到图上的标记 ↑</button>
       <button class="button" type="button" data-term-proof-reset hidden>清空证据</button>
       <button class="button" type="button" data-term-proof-back>回到刚才的判断</button>
     </div>
     <p class="term-feedback" role="status" data-term-proof-feedback></p>
-    <button class="button" type="button" data-term-proof-transfer hidden>换份材料试一次 →</button>
+    <button class="button primary" type="button" data-term-proof-transfer hidden>换份材料试一次 →</button>
   </div>`;
 }
 
@@ -102,9 +101,12 @@ export function bindTermMarkPractice(host, plan, stored, records, effects) {
     if (result) section.dataset.proofOutcome = result;
     effects.highlight(selected);
     reset.hidden = selected.length === 0;
-    transfer.hidden = !result;
+    const success = checked && valid();
+    check.hidden = success;
+    transfer.hidden = !success;
+    section.dataset.result = checked ? success ? 'correct' : 'retry' : '';
     const names = selected.map(index => records[index].label).join('、');
-    if (checked && valid()) {
+    if (success) {
       feedback.textContent = (result === 'guided' ? '核对后找到了证据。' : '独立找到了证据。') + plan.reasoning;
     } else if (checked) {
       feedback.textContent = '当前点了「' + names + '」。' + plan.reasoning + '请回到图里再试。';
@@ -132,8 +134,6 @@ export function bindTermMarkPractice(host, plan, stored, records, effects) {
     effects.onOpen();
     focusNear(begin);
   });
-  section.querySelector('[data-term-proof-chart]').addEventListener('click', () =>
-    focusNear(host.querySelector('[data-bar], [data-key]')));
   check.addEventListener('click', () => {
     if (selected.length < plan.indices.length) {
       feedback.textContent = '再选 ' + (plan.indices.length - selected.length) + ' 处材料。';
@@ -148,6 +148,7 @@ export function bindTermMarkPractice(host, plan, stored, records, effects) {
     }
     save();
     paint();
+    if (check.hidden) focusNear(transfer);
   });
   reset.addEventListener('click', () => {
     selected = [];

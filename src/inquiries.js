@@ -180,6 +180,7 @@ export const inquiries = {
     guess: '在图上找两岸，再猜中间是哪片海。',
     visualReading: true,
     compare: '我在图上找到了哪两岸？中间隔着哪片洋？',
+    closing: '找航线经过的大洋，先定位两岸，再沿路线读海域名称。比较不同地方的地形，先核对图例和高程色阶。',
     outside: '从非洲东岸向东，到澳大利亚会跨过哪片大洋？',
   },
   'land-change': {

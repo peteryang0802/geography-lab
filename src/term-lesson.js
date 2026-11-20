@@ -1,6 +1,7 @@
 import { escapeHtml as escape } from './inquiry-view.js?v=6';
 import { mountTermDiagram } from './term-diagram.js?v=3';
-import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=1';
+import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
+import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -56,10 +57,6 @@ function bindReview(root, entry, learning, restored, remember) {
   if (!info) return;
   const options = [...info.querySelectorAll('[data-term-answer]')];
   const feedback = info.querySelector('[role=status]');
-  const renew = info.querySelector('[data-term-retry]');
-  const source = info.querySelector('h2');
-  const revisit = info.querySelector('[data-term-review-source]');
-  const back = info.querySelector('[data-term-review-back]');
   const taskId = 'review-' + entry.id;
   let selected = restored === undefined ? learning.state.answers[taskId]?.option : restored;
   if (!Number.isInteger(selected) || !entry.review.options[selected]) selected = null;
@@ -70,12 +67,7 @@ function bindReview(root, entry, learning, restored, remember) {
     }
     feedback.textContent = selected === null ? '' :
       (correct ? '这条依据能说得通。' : '再用材料核对。') + entry.review.options[selected][1];
-    revisit.hidden = renew.hidden = selected === null;
-    if (selected === null) back.hidden = true;
-  }
-  function focusNear(element) {
-    element.focus({ preventScroll: true });
-    element.scrollIntoView({ block: 'center', behavior: 'instant' });
+    info.dataset.result = selected === null ? '' : correct ? 'correct' : 'retry';
   }
   for (const button of options) {
     button.addEventListener('click', () => {
@@ -88,17 +80,6 @@ function bindReview(root, entry, learning, restored, remember) {
       alignTermBoard(info, button, feedback);
     });
   }
-  revisit.addEventListener('click', () => {
-    back.hidden = false;
-    focusNear(source);
-  });
-  back.addEventListener('click', () => focusNear(options[selected] || options[0]));
-  renew.addEventListener('click', () => {
-    selected = null;
-    remember(null);
-    paint();
-    options[0]?.focus({preventScroll:true});
-  });
   paint();
 }
 
@@ -148,7 +129,7 @@ function compareProfilePoints(activity, picks) {
 
 function profilePracticeMarkup(practice) {
   if (!practice) return '';
-  return `<section class="term-fold term-profile-scope" data-profile-scope aria-labelledby="profile-scope-title" hidden>
+  return `<section class="term-fold term-profile-scope" data-profile-scope aria-labelledby="profile-scope-title">
     <h2 id="profile-scope-title" tabindex="-1">${escape(practice.scope.prompt)}</h2>
     <div class="term-choices" role="group" aria-labelledby="profile-scope-title">
       ${practice.scope.options.map(([label], index) => `<button type="button" class="button" data-scope-choice="${index}" aria-pressed="false">${escape(label)}</button>`).join('')}
@@ -193,7 +174,8 @@ function bindProfilePractice(root, config, practice, save, recheck) {
     const selected = Number.isInteger(practice.scopeChoice) ? options[practice.scopeChoice] : null;
     const correct = selected && practice.scopeChoice === config.scope.answer;
     options.forEach(button => button.setAttribute('aria-pressed', String(button === selected)));
-    feedback.textContent = selected ? config.scope.options[practice.scopeChoice][1] : '';
+    feedback.textContent = selected ? (correct ? '找对了。' : '再看看。') + config.scope.options[practice.scopeChoice][1] : '';
+    scope.dataset.result = selected ? (correct ? 'correct' : 'retry') : '';
     source.hidden = !selected || correct;
     next.hidden = !correct;
   }
@@ -219,11 +201,13 @@ function bindProfilePractice(root, config, practice, save, recheck) {
     reset.hidden = picks.length === 0;
     hint.hidden = Boolean(practice.transferResult);
     if (picks.length < 2) {
+      result.dataset.result = '';
       result.textContent = practice.transferHint ? '提示：找一段往右走、线却往上走的坡。' :
         picks.length ? '已选 ' + marker(picks[0]) + '，再选一处。' : '';
       return;
     }
     const {line, change} = compareProfilePoints(config.transfer, picks);
+    result.dataset.result = change > 0 ? 'correct' : 'retry';
     result.textContent = line + (change > 0
       ? '这两个点找到了反例。' + (practice.transferResult === 'independent' ? '这一次独立找到了。' : '这一次通过提示或重试找到了。')
       : '这组点还找不到反例。看看哪一段往右走，海拔却升高。');
@@ -262,7 +246,7 @@ function bindProfilePractice(root, config, practice, save, recheck) {
   return () => diagram?.dispose();
 }
 
-export function renderTermLesson(root, { entry, term, next, related, learning, reviewOnly, onGlobe, onPhotos }) {
+export function renderTermLesson(root, { entry, term, next, related, learning, reviewOnly, initialStep, onStep, onGlobe, onPhotos }) {
   const activity = entry.activity;
   const records = dataFor(activity);
   const hasReadings = records.length >= 2 && records.every(point => Number.isFinite(point.value));
@@ -276,14 +260,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
-  root.innerHTML = `<article class="term-lesson" data-extended-lesson="${escape(entry.id)}">
-    <a class="volume-back" href="#/term/${term.id}">← ${term.title}目录</a>
-    <header class="term-intro">
-      <p class="term-bookname">${escape(entry.title)}${entry.project ? ' · 主题探究' : ''}</p>
-      <h1>${escape(entry.question)}</h1>
-      <details class="term-anchor" data-remember="term-paper"><summary>${lessonPage}</summary><p>${escape(entry.anchor || entry.title)}</p></details>
-    </header>
-    <section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation"${profilePractice ? ' data-profile-practice' : ''}>
+  const observation = `<section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation"${profilePractice ? ' data-profile-practice' : ''}>
       <div class="term-board-tools">
         <p>${activity.kind === 'chart' ? '点条形，看读数。' : '点图上的字母读图。'}</p>
         ${canCompare ? `<button type="button" class="button" data-term-compare aria-expanded="false" aria-controls="term-compare-panel">${compareLabel}</button>` : ''}
@@ -312,30 +289,41 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
         <button type="button" class="button" data-term-compare-reset hidden>清空重选</button>
       </div>` : ''}
       ${renderTermMarkPractice(markPractice)}
-    </section>
-    ${profilePracticeMarkup(profilePractice)}
-    ${canGlobe ? '<details class="term-fold" data-term-globe><summary>用地球仪看位置和地形</summary><div data-term-globe-stage></div></details>' : ''}
-    ${onPhotos ? '<details class="term-fold" data-term-photos data-remember="term-photos"><summary>看这一带的实景照片</summary><div class="photo-gallery" data-term-gallery></div></details>' : ''}
-    ${projectMarkup(entry, learning.state.notes[entry.id])}
-    <p class="term-takeaway"><strong>用一句话记住</strong> ${escape(entry.takeaway)}</p>
-    <details class="term-fold term-review" data-term-review data-inquiry-section="term-review" data-remember="term-review"
-      ${reviewOnly || Number.isInteger(saved?.reviewPick) ? 'open' : ''}>
-      <summary>换份材料复习</summary>
-      <h2 tabindex="-1">${escape(entry.review.prompt)}</h2>
-      <button type="button" class="button" data-term-review-back hidden>回到刚才的选择 ↓</button>
+    </section>`;
+  const review = `<section class="term-review" data-term-review data-inquiry-section="term-review">
+      <h3 class="geo-review-prompt" tabindex="-1">${escape(entry.review.prompt)}</h3>
       <div class="term-choices" role="group" aria-label="选择材料支持的解释">
         ${entry.review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
       </div>
       <p class="term-feedback" role="status"></p>
-      <button type="button" class="button" data-term-review-source hidden>回看题目给的材料 ↑</button>
-      <button type="button" class="button" data-term-retry hidden>清空再试</button>
-    </details>
-    ${related ? `<details class="term-fold term-relation"><summary>还有一课可以对照</summary><p><a href="${related.href}">${escape(related.title)}</a></p></details>` : ''}
+    </section>`;
+  const recap = `<p class="term-takeaway geo-recap"><strong>用一句话记住</strong> ${escape(entry.takeaway)}</p>
+    ${projectMarkup(entry, learning.state.notes[entry.id])}
+    ${canGlobe || onPhotos || related ? `<details class="term-fold" data-remember="term-extras">
+      <summary>课后再看</summary>
+      ${canGlobe ? '<details class="term-fold" data-term-globe><summary>用地球仪看位置和地形</summary><div data-term-globe-stage></div></details>' : ''}
+      ${onPhotos ? '<details class="term-fold" data-term-photos data-remember="term-photos"><summary>看这一带的实景照片</summary><div class="photo-gallery" data-term-gallery></div></details>' : ''}
+      ${related ? `<p class="geo-related"><a href="${related.href}">对照《${escape(related.title)}》</a></p>` : ''}
+    </details>` : ''}
+    <details class="term-anchor" data-remember="term-paper"><summary>课本里看哪里</summary><p>${escape(entry.anchor || entry.title)}</p></details>
     <nav class="course-next term-next" aria-label="按课本顺序继续">
       <a class="button primary next-lesson" href="${follow}"><span><small>${next ? '按课本顺序继续' : '读到本册最后一项'}</small><strong>${escape(next?.title || '回本册目录')}</strong></span><span aria-hidden="true">→</span></a>
-    </nav>
+    </nav>`;
+  root.innerHTML = `<article class="term-lesson geo-lesson" data-extended-lesson="${escape(entry.id)}">
+    <header class="term-intro">
+      <p class="term-bookname">${entry.project ? '主题探究 · ' : ''}${lessonPage}</p>
+      <h1>${escape(entry.title)}</h1>
+    </header>
+    ${lessonFlow([
+      { id: 'opening', label: '带着问题', content: `<div class="geo-opening"><h3>${escape(entry.question)}</h3></div>`, next: '看图找线索' },
+      { id: 'term-observation', label: '看图找线索', content: observation, next: profilePractice ? '用剖面作判断' : '换份材料复习' },
+      ...(profilePractice ? [{ id: 'profile', label: '用剖面作判断', content: profilePracticeMarkup(profilePractice), next: '换份材料复习' }] : []),
+      { id: 'term-review', label: '换份材料复习', content: review, next: '回顾这节课' },
+      { id: 'recap', label: '回顾这节课', content: recap },
+    ])}
   </article>`;
 
+  const flow = bindLessonFlow(root, reviewOnly ? 'term-review' : initialStep === 'profile-transfer' ? 'profile' : initialStep, onStep);
   const host = root.querySelector('.term-station');
   const figure = host.querySelector('figure');
   const panel = host.querySelector('[data-term-feedback]');
@@ -350,7 +338,6 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   const conclude = host.querySelector('[data-profile-conclude]');
   const hint = host.querySelector('[data-profile-hint]');
   const hintText = host.querySelector('[data-profile-hint-text]');
-  const scope = root.querySelector('[data-profile-scope]');
   const prediction = host.querySelector('[data-term-prediction]');
   let proofWidget = saved?.proof;
   let reviewPick = saved?.reviewPick;
@@ -379,7 +366,6 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       comparePanel.hidden = !comparing;
     }
     prediction.hidden = comparing || Boolean(proof?.active);
-    if (scope) scope.hidden = !practice.mainEvidence;
     if (!comparing) {
       if (!proof?.active) paint();
       return;
@@ -390,6 +376,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       hintText.textContent = practice.mainHint && !practice.mainEvidence ? profilePractice.hint : '';
     }
     highlight(picks, false);
+    compareResult.dataset.result = '';
     compareReset.hidden = picks.length === 0;
     if (picks.length === 0) {
       compareResult.textContent = '先选一处。';
@@ -402,14 +389,18 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     }
     if (profilePractice) {
       const {line, change} = compareProfilePoints(activity, picks);
+      if (!practice.viewingEnds) compareResult.dataset.result = change > 0 ? 'correct' : 'retry';
       compareResult.textContent = line + (practice.viewingEnds ? '剖面两端一西一东，西边明显更高。' :
         change > 0 ? comparison.feedback + (practice.mainEvidence === 'independent' ? '已独立找到证据。' : '已根据提示或重试找到证据。') :
           comparison.again);
       return;
     }
-    const evidence = comparison
-      ? (comparison.pairs.some(pair => pair.every(index => picks.includes(index))) ? comparison.feedback : comparison.again)
-      : '';
+    let evidence = '';
+    if (comparison) {
+      const matches = comparison.pairs.some(pair => pair.every(index => picks.includes(index)));
+      compareResult.dataset.result = matches ? 'correct' : 'retry';
+      evidence = matches ? comparison.feedback : comparison.again;
+    }
     if (hasReadings) {
       const difference = Number(Math.abs(first.value - second.value).toFixed(2));
       const unit = activity.unit ? ' ' + activity.unit : '';
@@ -487,7 +478,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     comparePanel.querySelector('h2').focus({preventScroll:true});
     alignTermBoard(host, compareToggle, compareResult);
   });
-  conclude?.addEventListener('click', () => scope.querySelector('h2').focus());
+  conclude?.addEventListener('click', () => flow.show('profile'));
   hint?.addEventListener('click', () => {
     practice.mainHint = true;
     save();
@@ -535,11 +526,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     isGuided() { return revealed; },
     complete() { learning.markCompleted(entry.id); },
     transfer() {
-      const review = root.querySelector('[data-term-review]');
-      review.open = true;
-      const prompt = review.querySelector('h2');
-      prompt.focus({ preventScroll: true });
-      prompt.scrollIntoView({ block: 'center', behavior: 'instant' });
+      flow.show('term-review');
     },
   });
   paintComparison();
@@ -547,6 +534,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     practice.viewingEnds = true;
     picks = [0, records.length - 1];
     setComparing(true);
+    flow.show('term-observation');
     const title = comparePanel.querySelector('h2');
     title.focus();
     alignTermBoard(host, title, compareResult);

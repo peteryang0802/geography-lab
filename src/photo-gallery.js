@@ -176,6 +176,7 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
   }
 
   function update() {
+    if (!track.clientWidth) return;
     const previousIndex = index;
     const distance = slides.map((_, i) => Math.abs(track.scrollLeft - scrollTarget(i)));
     index = distance.indexOf(Math.min(...distance));
@@ -198,6 +199,7 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
   }
 
   function goTo(slide, instant = false) {
+    if (!track.clientWidth) return;
     const target = bound(slide);
     clearTimeout(prefetchTimer);
     requestedIndex = target === index ? null : target;
@@ -232,6 +234,7 @@ export function mountPhotoGallery(host, photos, initialIndex, onChange, { embedd
 
   const observer = new ResizeObserver(() => {
     goTo(requestedIndex ?? index, true);
+    update();
   });
   observer.observe(track);
   goTo(index, true);

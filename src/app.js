@@ -1,7 +1,7 @@
 import { lessons, projects, concepts, getRelations, labs } from './catalog.js';
 import { FLOW_SOURCES } from './flow-model.js';
 import { topicViews } from './topic-views.js?v=5';
-import { mountPhotoGallery } from './photo-gallery.js?v=7';
+import { mountPhotoGallery } from './photo-gallery.js?v=8';
 import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { renderTextbookLegend } from './textbook-legend.js';
@@ -14,6 +14,7 @@ import { LAB_UI_MODULE } from './lab-module.js';
 import { volumeById, termEntryById, extendedEntries, entriesForVolume, termUrl, renderCourseHub, renderVolumeDirectory } from './term-catalog.js';
 import { responsivePhoto, mountDeferredPhotos, landscapePhoto, evidencePhoto, galleryPhoto } from './responsive-photo.js?v=7';
 import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } from './reading-practice.js';
+import { bindLessonFlow } from './lesson-flow.js?v=1';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -135,15 +136,15 @@ function taskHtml(task, index, inline = false) {
   const selected = state.answers[task.id]?.option;
   const active = Number.isInteger(selected) && task.options[selected];
   const correct = selected === task.answer;
-  return `<article class="task" data-task="${escape(task.id)}">
-    <header><span aria-hidden="true">${String(index + 1).padStart(2, '0')}</span><h3 id="task-${escape(task.id)}">${escape(task.prompt)}</h3></header>
-    ${task.evidence ? `<p class="evidence"${inline ? ' tabindex="-1" data-task-source' : ''}>${escape(task.evidence)}</p>` : ''}
-    ${inline && task.evidence ? '<button type="button" class="button" data-task-return hidden>继续刚才的小题 ↓</button>' : ''}
+  return `<article class="task" data-task="${escape(task.id)}"${active ? ` data-result="${correct ? 'correct' : 'retry'}"` : ''}>
+    <header>${inline ? '' : `<span aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>`}<h3 id="task-${escape(task.id)}">${escape(task.prompt)}</h3></header>
+    ${task.evidence ? (inline ? `<details class="geo-material-fold" data-remember="material-${escape(task.id)}" open>
+      <summary>本题材料</summary><p class="evidence">${escape(task.evidence)}</p>
+      </details>` : `<p class="evidence">${escape(task.evidence)}</p>`) : ''}
     <div class="options" role="group" aria-labelledby="task-${escape(task.id)}">
       ${task.options.map((option, i) => `<button type="button" class="option ${i === selected && !correct ? 'try-again' : ''}" aria-pressed="${i === selected}" data-option="${i}"><span class="option-letter" aria-hidden="true">${String.fromCharCode(65 + i)}</span>${escape(option.label)}</button>`).join('')}
     </div>
     <p class="feedback ${active && !correct ? 'try-again' : ''}" aria-live="polite" ${active ? '' : 'hidden'}>${active ? escape((correct ? '找对了。' : '再看看。') + task.options[selected].feedback) : ''}</p>
-    ${inline && task.evidence ? `<button type="button" class="button" data-task-revisit ${active ? '' : 'hidden'}>回看这题的材料 ↑</button>` : ''}
     ${task.hint ? `<details data-remember="hint-${escape(task.id)}"><summary>看看提示</summary><p>${escape(task.hint)}</p></details>` : ''}
   </article>`;
 }
@@ -154,21 +155,6 @@ function bindTasks(tasks) {
     if (!element) continue;
     const options = [...element.querySelectorAll('[data-option]')];
     const feedback = element.querySelector('.feedback');
-    const source = element.querySelector('[data-task-source]');
-    const reopen = element.querySelector('[data-task-revisit]');
-    const returnToTask = element.querySelector('[data-task-return]');
-    function moveFocus(target) {
-      target.focus({ preventScroll: true });
-      target.scrollIntoView({ block: 'center', behavior: 'instant' });
-    }
-    reopen?.addEventListener('click', () => {
-      returnToTask.hidden = false;
-      moveFocus(source);
-    });
-    returnToTask?.addEventListener('click', () => {
-      const selection = options.find(button => button.getAttribute('aria-pressed') === 'true');
-      moveFocus(selection || options[0]);
-    });
     for (const button of options) {
       button.addEventListener('click', () => {
         const option = Number(button.dataset.option);
@@ -183,8 +169,8 @@ function bindTasks(tasks) {
         feedback.textContent = (correct ? '找对了。' : '再看看。') + task.options[option].feedback;
         feedback.classList.toggle('try-again', !correct);
         feedback.hidden = false;
-        if (reopen) {
-          reopen.hidden = false;
+        element.dataset.result = correct ? 'correct' : 'retry';
+        if (element.closest('.geo-step')) {
           if (feedback.getBoundingClientRect().bottom > innerHeight - 8) feedback.scrollIntoView({ block: 'nearest' });
         }
         const progress = main.querySelector('[data-task-count]');
@@ -207,7 +193,7 @@ function lessonNavigation({ entry, next }) {
   </nav>`;
 }
 
-function activityMarkup(lesson, activities) {
+function activityMarkup(lesson, activities, first = true) {
   return activities.map((activity, index) => {
     const id = activityKey(lesson.id, activity);
     const host = `<div class="inquiry-activity" data-activity="${id}"><p class="activity-wait" role="status">正在准备图和操作…</p></div>`;
@@ -216,7 +202,7 @@ function activityMarkup(lesson, activities) {
       : '';
     if (activity.placement) return `<section class="inquiry-outside" data-inquiry-section="${activity.placement}">
       <h2>${escape(activity.title)}</h2>${host}</section>`;
-    if (index === 0) return host + gallery;
+    if (first && index === 0) return host + gallery;
     if (activity.collapsible) return `<details class="inquiry-extra-activity inquiry-optional-experiment"
       data-inquiry-section="activity-${activity.kind}" data-remember="${id}">
       <summary>${escape(activity.title)}</summary>${host}${gallery}</details>`;
@@ -247,34 +233,30 @@ function showLesson(lesson, storedView) {
   const position = getTextbookPosition(lesson.id);
   const data = inquiries[lesson.id];
   const activities = lessonActivities[lesson.id];
+  const [openingActivity, ...furtherActivities] = activities.filter(activity => !activity.placement);
+  const extraActivities = furtherActivities.filter(activity => !activity.collapsible);
+  const optionalActivities = activityMarkup(lesson, furtherActivities.filter(activity => activity.collapsible), false);
+  const activitySteps = extraActivities.map((activity, index) => ({
+    id: 'activity-' + activity.kind,
+    label: activity.title,
+    content: activityMarkup(lesson, [activity], false) + (index === extraActivities.length - 1 ? optionalActivities : ''),
+  }));
   const proofKey = lesson.id + '-reading-practice';
   const plan = lessonReadingPractice(lesson, data);
   const tasks = lesson.tasks.slice(0, 2);
-  const practiceMarkup = `<details id="lesson-inline-practice" class="lesson-inline-practice" data-remember="lesson-practice"
-      data-inquiry-section="lesson-practice" ${state.activities[proofKey] || tasks.some(task => state.answers[task.id]) ? 'open' : ''}>
-      <summary>做一做本课小题</summary>
-      ${renderReadingPractice(plan, state.activities[proofKey])}
-      ${taskHtml(tasks[0], 0, true)}
-      <details class="lesson-practice-transfer" data-remember="lesson-practice-transfer" ${state.answers[tasks[1].id] ? 'open' : ''}>
-        <summary>换份材料再用一次</summary>${taskHtml(tasks[1], 1, true)}
-      </details>
-    </details>`;
+  const route = activeHash;
+  const practices = [renderReadingPractice(plan, state.activities[proofKey]), ...tasks.map((task, index) => taskHtml(task, index, true))];
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
-    activityMarkup: activityMarkup(lesson, activities.filter(activity => !activity.placement)),
-    practiceMarkup,
+    activityMarkup: activityMarkup(lesson, [openingActivity]) + (activitySteps.length ? '' : optionalActivities),
+    activitySteps,
+    practices,
     transferMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'transfer')),
     outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
     footer: lessonNavigation(position), note: lessonNote(lesson, data),
   });
   learning.recordVisit(lesson.id);
-  main.querySelector('[data-lesson-practice-jump]').addEventListener('click', () => {
-    const practice = main.querySelector('#lesson-inline-practice');
-    practice.open = true;
-    const heading = practice.querySelector('summary');
-    heading.focus({ preventScroll: true });
-    heading.scrollIntoView({ block: 'start', behavior: 'instant' });
-  });
+  bindLessonFlow(main, storedView?.flowStep ?? storedView?.section, flowStep => learning.saveView(route, { flowStep }));
   bindReadingPractice(main, plan, state.activities[proofKey], value => learning.setRecord('activities', proofKey, value));
   bindTasks(tasks);
   const note = main.querySelector('#project-note');
@@ -287,7 +269,7 @@ function showLesson(lesson, storedView) {
   session.disposers.push(() => {
     for (const event of inputEvents) window.removeEventListener(event, stopRestoring);
   });
-  activities.forEach((activity, index) => {
+  activities.forEach(activity => {
     const key = activityKey(lesson.id, activity);
     const host = main.querySelector('[data-activity="' + key + '"]');
     const mount = () => mountInquiryActivity(host, lesson, activity, key, session, storedView);
@@ -303,7 +285,7 @@ function showLesson(lesson, storedView) {
         };
         panel.addEventListener('toggle', start);
       }
-    } else if (index === 0 || storedView?.section === panel?.dataset.inquirySection || !('IntersectionObserver' in window)) mount();
+    } else if (storedView?.section === panel?.dataset.inquirySection || !('IntersectionObserver' in window)) mount();
     else {
       const observer = new IntersectionObserver(entries => {
         if (entries.some(entry => entry.isIntersecting)) {
@@ -415,6 +397,13 @@ function acceptedOrigin(route) {
   if (page === 'lesson' && (byLesson.has(id) || termEntryById.has(id)) || page === 'lab' && byLab.has(id) || page === 'concept' && byConcept.has(id)) return route;
   if (!id && ['review', 'explore', 'legend', 'textbook'].includes(page)) return route;
   return null;
+}
+
+function courseReturn(query, id) {
+  const route = acceptedOrigin(query.get('from'));
+  if (!route) return null;
+  const origin = routeParts(route);
+  return origin.page === 'lesson' && origin.id !== id ? route : null;
 }
 
 function contextReturn(from) {
@@ -716,8 +705,10 @@ function captureView() {
   const { page, id } = routeParts(activeHash);
   const details = Array.from(main.querySelectorAll('details[data-remember]'), element => [element.dataset.remember, element.open]);
   const nearest = page === 'lesson' && Array.from(main.querySelectorAll('[data-inquiry-section]'))
-    .find(element => element.getBoundingClientRect().bottom > 36);
+    .find(element => !element.parentElement.closest('[hidden], details:not([open])') && element.getBoundingClientRect().bottom > 36);
   const position = { scrollY, details: Object.fromEntries(details) };
+  const activeStep = main.querySelector('[data-geo-step]:not([hidden])');
+  if (activeStep) position.flowStep = activeStep.dataset.geoStep;
   if (nearest) {
     position.section = nearest.dataset.inquirySection;
     position.offset = -nearest.getBoundingClientRect().top;
@@ -725,7 +716,7 @@ function captureView() {
   learning.saveView(activeHash, position);
   if (page === 'lesson' && (byLesson.has(id) || termEntryById.has(id))) {
     const previous = state.positions[id];
-    if (previous?.scrollY !== position.scrollY || previous?.section !== position.section || JSON.stringify(previous?.details) !== JSON.stringify(position.details)) {
+    if (previous?.scrollY !== position.scrollY || previous?.section !== position.section || previous?.flowStep !== position.flowStep || JSON.stringify(previous?.details) !== JSON.stringify(position.details)) {
       learning.setRecord('positions', id, position);
     }
   }
@@ -742,7 +733,7 @@ function restoreView(view) {
 function restoreInquiryPosition(view) {
   if (!view?.section) return;
   const section = Array.from(main.querySelectorAll('[data-inquiry-section]'))
-    .find(element => element.dataset.inquirySection === view.section);
+    .find(element => element.dataset.inquirySection === view.section && !element.closest('[hidden], details:not([open])'));
   if (section) scrollBy(0, section.getBoundingClientRect().top + (view.offset ?? 0));
 }
 
@@ -776,7 +767,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a><section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=5', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=6', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
@@ -786,12 +777,14 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       if (!entry) throw new Error('volume entry unavailable');
       const related = (entry.related || []).map(id => {
         const direct = byLesson.get(id) || termEntryById.get(id);
-        if (direct) return {title: direct.title, href: lessonUrl(id)};
+        if (direct) return {title: direct.title, href: lessonUrl(id) + '?from=' + encodeURIComponent(route)};
         const concept = byConcept.get(id);
         return concept ? {title: concept.title, href: conceptUrl(id, route)} : null;
       }).find(Boolean);
       drawing = renderTermLesson(main, {
         entry, term: volume, next: following, related, learning, reviewOnly: practiceOnly,
+        initialStep: view?.flowStep ?? view?.section,
+        onStep: flowStep => learning.saveView(route, { flowStep }),
         onGlobe: globeMode ? host => {
           const globe = byLab.get('globe');
           const key = 'lesson-' + entry.id;
@@ -809,7 +802,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       if (!practiceOnly) {
         learning.recordVisit(summary.id);
         const context = previous ? routeParts(previous) : null;
-        if (context?.page !== 'concept' && context?.page !== 'lab') {
+        if (!courseReturn(routeParts(route).query, summary.id) && context?.page !== 'concept' && context?.page !== 'lab') {
           learning.setResume(summary.id, {route, scrollY: view?.scrollY || 0});
         }
       }
@@ -819,6 +812,10 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       if (practiceOnly) main.querySelector('[data-term-review]')?.scrollIntoView({block: 'start'});
       else if (view?.section) restoreInquiryPosition(view);
       else if (view?.scrollY) scrollTo(0, view.scrollY);
+      const origin = previous && routeParts(previous);
+      if (origin && courseReturn(origin.query, origin.id) === route) {
+        main.querySelector('.geo-related a')?.focus({ preventScroll: true });
+      }
     } catch (error) {
       if (!valid()) return;
       console.warn('Volume activity could not be loaded', summary.id, error);
@@ -858,8 +855,10 @@ function render() {
   const activeTab = page === 'explore' || page === 'concept' ? 'explore' : page === 'review' || page === 'practice' ? 'review' : 'home';
   for (const link of document.querySelectorAll('[data-nav]')) {
     if (link.dataset.nav === 'home') {
-      link.textContent = lesson ? '‹ 本册目录' : '四册';
-      link.href = lesson ? termUrl('7a') : '#/';
+      const lessonTerm = page === 'lesson' && (lesson ? '7a' : expanded?.term);
+      const origin = lessonTerm ? courseReturn(query, id) : null;
+      link.textContent = origin ? '‹ 回原课' : lessonTerm ? '‹ 本册目录' : '四册';
+      link.href = origin || (lessonTerm ? termUrl(lessonTerm) : '#/');
     }
     if (link.dataset.nav === activeTab) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
@@ -876,7 +875,9 @@ function render() {
     const cameFrom = previous ? routeParts(previous) : null;
     const contextualBack = cameFrom?.page === 'concept' && contextReturn(cameFrom.query.get('from')).href === next
       || cameFrom?.page === 'lab' && (cameFrom.query.get('returnTo') === next || cameFrom.query.get('from') === id);
-    if (!contextualBack) learning.setResume(id, { route: next, scrollY: view?.scrollY || 0 });
+    if (!contextualBack && !courseReturn(query, id)) {
+      learning.setResume(id, { route: next, scrollY: view?.scrollY || 0 });
+    }
   } else if (page === 'concept' && byConcept.has(id)) showConcept(byConcept.get(id), query);
   else if (page === 'lab' && byLab.has(id)) {
     const lab = byLab.get(id);

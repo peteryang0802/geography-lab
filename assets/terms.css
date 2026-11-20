@@ -1,21 +1,4 @@
-[hidden] { display: none !important; }
-.lesson-inline-practice {
-  margin-block: 18px;
-  padding: 0 14px 12px;
-  max-width: 860px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--paper);
-}
-.lesson-inline-practice > summary, .lesson-practice-transfer > summary {
-  min-height: 44px;
-  padding-block: 10px;
-  color: var(--green);
-  font-weight: 700;
-  cursor: pointer;
-}
-.lesson-practice-jump { margin-top: 6px; }
-.lesson-reading-practice { padding-block: 8px 12px; border-block-end: 1px solid var(--line); }
+.lesson-reading-practice { padding-block: 2px 8px; }
 .lesson-reading-practice h3 { margin: 0 0 8px; line-height: 1.34; font-size: 1.03rem; font-weight: 700; }
 .reading-evidence-buttons, .term-proof-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .reading-evidence-buttons .button[aria-pressed="true"] {
@@ -24,8 +7,7 @@
 }
 .lesson-reading-feedback { margin: 4px 0 0; }
 .lesson-reading-feedback:empty { display: none; }
-.lesson-inline-practice [data-task-source]:focus { outline: 2px solid var(--green); outline-offset: 3px; }
-.term-proof .button, .term-review [data-term-review-source], .term-review [data-term-review-back] { min-height: 44px; }
+.term-proof .button { min-height: 44px; }
 .term-proof-guide { margin: 0; font-size: .87rem; }
 .term-proof [data-term-proof-transfer] { justify-self: start; }
 .volume-home { max-width: 910px; padding-top: clamp(7px, 3.8vh, 44px); }
@@ -128,7 +110,6 @@
 .term-fold > p { font-size: .93rem; }
 .term-fold h2 { margin: 4px 0 8px; }
 .term-fold .term-feedback { margin-top: 6px; }
-.term-review [data-term-retry] { margin-top: 6px; }
 .term-fold label { display: block; margin-bottom: 5px; font-size: .88rem; }
 #term-project-note {
   width: 100%; display: block; color: var(--ink); background: var(--page); border: 1px solid #809784;
@@ -194,3 +175,115 @@
   .term-key { min-height: 36px; }
   .term-bar { min-height: 40px; }
 }
+
+.geo-lesson {
+  --inquiry-accent: var(--green);
+  --geo-question: #f1eaf6;
+  --geo-question-ink: #563e70;
+  --geo-question-line: #8867a7;
+  --geo-material: #e8f1fb;
+  --geo-material-ink: #244a70;
+  --geo-material-line: #4f7ba8;
+  --geo-correct: #e6f2e7;
+  --geo-correct-ink: #1e563d;
+  --geo-correct-line: #478161;
+  --geo-retry: #fbefdd;
+  --geo-retry-ink: #7a410f;
+  --geo-retry-line: #a7662b;
+  max-width: 880px;
+  margin-inline: auto;
+}
+.geo-lesson :is(.inquiry-intro h1, .term-intro h1) { color: var(--ink); font-size: clamp(1.55rem, 4vw, 2.3rem); }
+.geo-lesson .inquiry-intro { margin-bottom: 12px; padding: 0; border: 0; background: transparent; }
+.geo-step-position {
+  padding: 5px 0 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .88rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  scroll-margin-top: 12px;
+}
+.geo-opening, .geo-recap {
+  border-inline-start: 2px solid var(--geo-question-line);
+  border-radius: 0 7px 7px 0;
+  background: var(--geo-question);
+  color: var(--geo-question-ink);
+  padding: clamp(10px, 2vw, 16px);
+}
+.geo-opening { max-width: 42rem; }
+.geo-opening h3 { font-size: clamp(1.15rem, 2.8vw, 1.65rem); line-height: 1.35; text-wrap: pretty; }
+.geo-opening p { margin-top: 7px; max-width: 52ch; }
+.geo-recap strong { color: inherit; }
+.geo-lesson .term-station { background: var(--paper); }
+.geo-lesson :is(.term-figure, .inquiry-reading, .geo-review-prompt, .evidence, .geo-material-fold, .ocean-life, .inquiry-picture-note) {
+  color: var(--geo-material-ink);
+  background: var(--geo-material);
+}
+.geo-lesson :is(.geo-review-prompt, .evidence, .geo-material-fold) { border-inline-start: 2px solid var(--geo-material-line); }
+.geo-lesson .geo-material-fold {
+  border-radius: 0 7px 7px 0;
+  padding: 0 11px;
+}
+.geo-lesson .geo-material-fold .evidence { margin: 0; border: 0; padding: 0 0 9px; }
+.geo-lesson .term-figure { border-radius: 8px; padding: 5px; }
+.geo-lesson :is(.term-figure, .inquiry-picture-note, .inquiry-figure, .inquiry-photo, .inquiry-world, .evidence-diagram, .opening-figure) figcaption { color: var(--geo-material-ink); }
+.geo-lesson .geo-review-prompt { padding: 10px 12px; line-height: 1.5; border-radius: 0 7px 7px 0; margin-bottom: 9px; }
+.geo-lesson .task { padding-block: 0; }
+.geo-lesson .term-review .term-choices { display: flex; }
+.geo-lesson .term-review .term-choices > button { font-size: .92rem; }
+.geo-step-actions { display: flex; flex-wrap: wrap; gap: 5px 15px; align-items: center; margin-top: 16px; }
+.geo-step-back {
+  min-height: 44px;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-underline-offset: .18em;
+  text-decoration: underline;
+  font-size: .9rem;
+}
+.geo-step :is(.geo-step-next, .next-lesson).primary { background: var(--green); border-color: var(--green); color: #fffefa; }
+.geo-step :is(.geo-step-next, .next-lesson).primary:hover { background: #22634c; }
+/* Leave navigation available while the current exercise has the visual priority. */
+.geo-step:has(> .geo-step-body :is(.button.primary, [data-rain-test][aria-pressed="false"], [data-rain-test][aria-pressed="true"] + [data-rain-drain][aria-pressed="false"]):not([hidden], [hidden] *, details:not([open]) *, .next-lesson)) .geo-step-next,
+.geo-step:has(> .geo-step-body :is([data-term-answer], [data-option], [data-reading-evidence], [data-scope-choice])):not(:has(> .geo-step-body :is([data-result="correct"], [data-result="retry"]))) .geo-step-next,
+.geo-step:has(> .geo-step-body details[open] .button.primary:not([hidden], [hidden] *, details:not([open]) *)) .next-lesson {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+.geo-step:has([data-term-proof-transfer]:not([hidden], [hidden] *)) .geo-step-next,
+.geo-step:has([data-profile-conclude]:not([hidden], [hidden] *)) .geo-step-next { display: none; }
+.geo-lesson .next-lesson small { color: inherit; }
+.geo-lesson .geo-related { padding-block: 6px; }
+.geo-lesson :is([data-term-choice], [data-term-answer], [data-scope-choice], [data-reading-evidence])[aria-pressed="true"] {
+  border-color: var(--geo-material-line);
+  background: var(--geo-material);
+  color: var(--geo-material-ink);
+  box-shadow: inset 0 0 0 1px var(--geo-material-line);
+}
+.geo-lesson [data-result="correct"] { --geo-result: var(--geo-correct); --geo-result-ink: var(--geo-correct-ink); --geo-result-line: var(--geo-correct-line); }
+.geo-lesson [data-result="retry"] { --geo-result: var(--geo-retry); --geo-result-ink: var(--geo-retry-ink); --geo-result-line: var(--geo-retry-line); }
+.geo-lesson :is([data-result="correct"], [data-result="retry"]) > :is(.feedback, .lesson-reading-feedback, .term-feedback),
+.geo-lesson :is(.term-feedback, .world-check-feedback):is([data-result="correct"], [data-result="retry"]) {
+  padding: 8px 11px;
+  border-inline-start: 2px solid var(--geo-result-line);
+  border-radius: 0 7px 7px 0;
+  background: var(--geo-result);
+  color: var(--geo-result-ink);
+}
+.geo-lesson :is([data-result="correct"], [data-result="retry"]) :is([data-term-answer], [data-scope-choice], [data-option], [data-reading-evidence])[aria-pressed="true"] {
+  border-color: var(--geo-result-line);
+  box-shadow: inset 0 0 0 1px var(--geo-result-line);
+  background: var(--geo-result);
+  color: var(--geo-result-ink);
+}
+.geo-lesson .option-letter { color: inherit; }
+.geo-lesson .term-station .term-feedback:not([data-result="correct"], [data-result="retry"], [data-result="correct"] *, [data-result="retry"] *) {
+  border-inline-start-color: var(--geo-material-line);
+  background: var(--geo-material);
+  color: var(--geo-material-ink);
+}
+.geo-lesson .term-profile-transfer > h2 { padding: 8px 10px; background: var(--geo-material); color: var(--geo-material-ink); }

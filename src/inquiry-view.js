@@ -1,4 +1,5 @@
 import { evidencePhoto, responsivePhoto } from './responsive-photo.js?v=7';
+import { lessonFlow } from './lesson-flow.js?v=1';
 
 export const inquiryViews = {
   recall: {
@@ -98,7 +99,7 @@ function oceanLifeFigure() {
   </figure>`;
 }
 
-export function renderInquiry({ entry, textbook, data, activityMarkup, practiceMarkup, transferMarkup, outsideMarkup, footer, note, viewId }) {
+export function renderInquiry({ entry, textbook, data, activityMarkup, activitySteps, practices, transferMarkup, outsideMarkup, footer, note, viewId }) {
   const view = inquiryViews[viewId];
   const visualReading = data.visualReading;
   const photo = evidencePhotos[entry.id];
@@ -107,28 +108,35 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, practiceM
       <header class="inquiry-section-head"><h2 id="evidence-title">${view.look}</h2></header>
       ${activityMarkup}
     </section>`;
-  return `<article class="course-lesson inquiry-lesson" data-inquiry-lesson="${escapeHtml(entry.id)}">
-    <header class="inquiry-intro" data-inquiry-section="opening">
+  const opening = `<div class="geo-opening" data-inquiry-section="opening">
+      <h3>${escapeHtml(data.question)}</h3>
+      <p>${escapeHtml(data.guess)}</p>
+    </div>`;
+  const recap = `<p class="geo-recap">${escapeHtml(data.closing)}</p>
+    <details class="inquiry-note" data-remember="lesson-extras">
+      <summary>课后再看</summary>
+      ${transferMarkup}
+      ${note}
+      ${data.paper ? `<p data-inquiry-section="paper"><strong>翻课本再找一条线索</strong>　${escapeHtml(data.paper)}</p>` : ''}
+      ${outsideMarkup || `<section class="inquiry-outside" data-inquiry-section="outside">
+        <h3>课外观察</h3><p>${escapeHtml(data.outside)}</p>
+      </section>`}
+    </details>
+    ${footer}`;
+  return `<article class="course-lesson inquiry-lesson geo-lesson" data-inquiry-lesson="${escapeHtml(entry.id)}">
+    <header class="inquiry-intro">
       <p class="inquiry-location">${escapeHtml(textbook)} <span>教材第 ${entry.page} 页起</span></p>
       <h1>${escapeHtml(entry.title)}</h1>
-      <h2>${escapeHtml(data.question)}</h2>
-      <p>${escapeHtml(data.guess)}</p>
-      ${practiceMarkup ? '<button class="button lesson-practice-jump" type="button" data-lesson-practice-jump aria-controls="lesson-inline-practice">去做本课小题 ↓</button>' : ''}
     </header>
-    ${evidence}
-    ${viewId === 'nearby' && photo ? illustration : ''}
-    ${visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : '')}
-    ${practiceMarkup}
-    ${transferMarkup}
-    ${note}
-    ${data.paper ? `<details class="inquiry-note" data-remember="inquiry-paper" data-inquiry-section="paper">
-      <summary>翻课本再找一条线索</summary>
-      <p>${escapeHtml(data.paper)}</p>
-    </details>` : ''}
-    ${outsideMarkup || `<section class="inquiry-outside" data-inquiry-section="outside">
-      <h2>课外观察</h2><p>${escapeHtml(data.closing)}</p>
-      <p>${escapeHtml(data.outside)}</p>
-    </section>`}
-    ${footer}
+    ${lessonFlow([
+      { id: 'opening', label: '带着问题', content: opening, next: '看图找线索' },
+      { id: 'evidence', label: '看图找线索', content: evidence + (viewId === 'nearby' && photo ? illustration : ''), next: activitySteps[0]?.label || '读懂材料' },
+      ...activitySteps.map((step, index) => ({ ...step, next: activitySteps[index + 1]?.label || '读懂材料' })),
+      { id: 'reading', label: '读懂材料', content: visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : ''), next: '找一条依据' },
+      { id: 'proof', label: '找一条依据', content: practices[0], next: '做一题' },
+      { id: 'lesson-practice', label: '做一题', content: practices[1], next: '换份材料再试' },
+      { id: 'lesson-practice-transfer', label: '换份材料再试', content: practices[2], next: '回顾这节课' },
+      { id: 'recap', label: '回顾这节课', content: recap },
+    ])}
   </article>`;
 }
