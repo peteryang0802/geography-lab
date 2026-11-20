@@ -701,7 +701,8 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const url = new URL(`./term-${id}.js?v=4${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
+    const dataVersion = id === '8a' ? 5 : 4;
+    const url = new URL(`./term-${id}.js?v=${dataVersion}${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
       loadedVolumes.delete(id);
@@ -727,7 +728,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<a class="volume-back" href="${termUrl(volume.id)}">← ${volume.title}目录</a><section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=3', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=4', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),

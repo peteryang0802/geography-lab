@@ -121,11 +121,141 @@ function projectBinding(root, entry, learning) {
   });
 }
 
+function compareProfilePoints(activity, picks) {
+  const [west, east] = [...picks].sort((left, right) => left - right);
+  const first = activity.values[west];
+  const second = activity.values[east];
+  const change = second.value - first.value;
+  return {
+    change,
+    line: marker(west) + ' ' + first.label + '（' + first.value + ' 米）往东到 ' +
+      marker(east) + ' ' + second.label + '（' + second.value + ' 米）' +
+      (change === 0 ? '，海拔相同。' : '，海拔' + (change > 0 ? '升高 ' : '降低 ') + Math.abs(change) + ' 米。'),
+  };
+}
+
+function profilePracticeMarkup(practice) {
+  if (!practice) return '';
+  return `<section class="term-fold term-profile-scope" data-profile-scope aria-labelledby="profile-scope-title" hidden>
+    <h2 id="profile-scope-title" tabindex="-1">${escape(practice.scope.prompt)}</h2>
+    <div class="term-choices" role="group" aria-labelledby="profile-scope-title">
+      ${practice.scope.options.map(([label], index) => `<button type="button" class="button" data-scope-choice="${index}" aria-pressed="false">${escape(label)}</button>`).join('')}
+    </div>
+    <p class="term-feedback" data-scope-feedback role="status"></p>
+    <button type="button" class="button" data-profile-source hidden>看看剖面两端 →</button>
+    <button type="button" class="button primary" data-profile-next hidden>换个剖面找反例 →</button>
+  </section>
+  <details class="term-fold term-profile-transfer" data-profile-transfer data-inquiry-section="profile-transfer" data-remember="profile-transfer">
+    <summary>换个剖面找反例</summary>
+    <h2 tabindex="-1">${escape(practice.transfer.prompt)}</h2>
+    <figure class="term-figure">
+      ${plotMarkup(practice.transfer)}
+      <figcaption>${escape(practice.transfer.caption)}</figcaption>
+    </figure>
+    <div class="term-profile-actions">
+      <button type="button" class="button" data-transfer-hint>给一点提示</button>
+      <button type="button" class="button" data-transfer-reset hidden>清空重选</button>
+    </div>
+    <p class="term-feedback" data-transfer-feedback role="status"></p>
+  </details>`;
+}
+
+function bindProfilePractice(root, config, practice, save, recheck) {
+  if (!config) return () => {};
+  const scope = root.querySelector('[data-profile-scope]');
+  const options = [...scope.querySelectorAll('[data-scope-choice]')];
+  const feedback = scope.querySelector('[data-scope-feedback]');
+  const source = scope.querySelector('[data-profile-source]');
+  const next = scope.querySelector('[data-profile-next]');
+  const transfer = root.querySelector('[data-profile-transfer]');
+  const figure = transfer.querySelector('figure');
+  const keys = [...figure.querySelectorAll('[data-key]')];
+  const result = transfer.querySelector('[data-transfer-feedback]');
+  const hint = transfer.querySelector('[data-transfer-hint]');
+  const reset = transfer.querySelector('[data-transfer-reset]');
+  let picks = Array.isArray(practice.transferPicks) ? [...new Set(practice.transferPicks)]
+    .filter(index => Number.isInteger(index) && config.transfer.values[index]).slice(0, 2) : [];
+  let diagram;
+
+  function paintScope() {
+    const selected = Number.isInteger(practice.scopeChoice) ? options[practice.scopeChoice] : null;
+    const correct = selected && practice.scopeChoice === config.scope.answer;
+    options.forEach(button => button.setAttribute('aria-pressed', String(button === selected)));
+    feedback.textContent = selected ? config.scope.options[practice.scopeChoice][1] : '';
+    source.hidden = !selected || correct;
+    next.hidden = !correct;
+  }
+  for (const option of options) {
+    option.addEventListener('click', () => {
+      practice.scopeChoice = Number(option.dataset.scopeChoice);
+      save();
+      paintScope();
+    });
+  }
+  source.addEventListener('click', recheck);
+  next.addEventListener('click', () => {
+    transfer.open = true;
+    transfer.querySelector('h2').focus();
+  });
+
+  function paintTransfer() {
+    diagram?.select(picks, false);
+    keys.forEach((key, index) => {
+      key.classList.toggle('mark-selected', picks.includes(index));
+      key.setAttribute('aria-pressed', String(picks.includes(index)));
+    });
+    reset.hidden = picks.length === 0;
+    hint.hidden = Boolean(practice.transferResult);
+    if (picks.length < 2) {
+      result.textContent = practice.transferHint ? '提示：找一段往右走、线却往上走的坡。' :
+        picks.length ? '已选 ' + marker(picks[0]) + '，再选一处。' : '';
+      return;
+    }
+    const {line, change} = compareProfilePoints(config.transfer, picks);
+    result.textContent = line + (change > 0
+      ? '这两个点找到了反例。' + (practice.transferResult === 'independent' ? '这一次独立找到了。' : '这一次通过提示或重试找到了。')
+      : '这组点还找不到反例。看看哪一段往右走，海拔却升高。');
+  }
+  function pick(index) {
+    picks = picks.includes(index) ? picks.filter(item => item !== index) : [...picks.slice(-1), index];
+    if (picks.length === 2) {
+      const {change} = compareProfilePoints(config.transfer, picks);
+      if (change > 0) practice.transferResult ||= practice.transferHint ? 'guided' : 'independent';
+      else practice.transferHint = true;
+    }
+    practice.transferPicks = picks;
+    save();
+    paintTransfer();
+  }
+  hint.addEventListener('click', () => {
+    practice.transferHint = true;
+    if (picks.length === 2 && !practice.transferResult) {
+      picks = [];
+      practice.transferPicks = picks;
+    }
+    save();
+    paintTransfer();
+  });
+  reset.addEventListener('click', () => {
+    picks = [];
+    practice.transferPicks = picks;
+    save();
+    paintTransfer();
+    keys[0]?.focus();
+  });
+  keys.forEach((key, index) => key.addEventListener('click', () => pick(index)));
+  diagram = mountTermDiagram(figure, config.transfer, pick);
+  paintScope();
+  paintTransfer();
+  return () => diagram?.dispose();
+}
+
 export function renderTermLesson(root, { entry, term, next, related, learning, reviewOnly, onGlobe, onPhotos }) {
   const activity = entry.activity;
   const records = dataFor(activity);
   const hasReadings = records.length >= 2 && records.every(point => Number.isFinite(point.value));
   const comparison = entry.comparison;
+  const profilePractice = entry.profilePractice;
   const canCompare = hasReadings || Boolean(comparison);
   const compareLabel = hasReadings ? '对照两个读数' : '在图上选两处';
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
@@ -138,7 +268,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       <h1>${escape(entry.question)}</h1>
       <details class="term-anchor" data-remember="term-paper"><summary>${lessonPage}</summary><p>${escape(entry.anchor || entry.title)}</p></details>
     </header>
-    <section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation">
+    <section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation"${profilePractice ? ' data-profile-practice' : ''}>
       <div class="term-board-tools">
         <p>${activity.kind === 'chart' ? '点条形，看读数。' : '点图上的字母读图。'}</p>
         ${canCompare ? `<button type="button" class="button" data-term-compare aria-expanded="false" aria-controls="term-compare-panel">${compareLabel}</button>` : ''}
@@ -154,14 +284,19 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
           <button type="button" class="button" data-term-choice="?" aria-pressed="false">还不确定</button>
         </div>
         <p class="term-feedback" role="status" data-term-feedback></p>
-        <button type="button" class="button primary" data-term-see>看图核对</button>
+        ${profilePractice ? '<div class="term-profile-actions">' : ''}
+          <button type="button" class="button primary" data-term-see>看图核对</button>
+          ${profilePractice ? '<button type="button" class="button primary" data-profile-find hidden>到剖面上找反例 →</button>' : ''}
+        ${profilePractice ? '</div>' : ''}
       </div>
       ${canCompare ? `<div class="term-controls" id="term-compare-panel" data-term-comparison hidden>
-        <h2>${escape(comparison?.prompt || '点图上的两个标记，看看相差多少。')}</h2>
+        <h2 tabindex="-1">${escape(comparison?.prompt || '点图上的两个标记，看看相差多少。')}</h2>
         <p class="term-feedback" role="status" data-term-compare-result></p>
+        ${profilePractice ? '<p class="term-feedback" role="status" data-profile-hint-text></p><button type="button" class="button" data-profile-hint>给一点提示</button><button type="button" class="button primary" data-profile-conclude hidden>用刚才的反例作判断 →</button>' : ''}
         <button type="button" class="button" data-term-compare-reset hidden>清空重选</button>
       </div>` : ''}
     </section>
+    ${profilePracticeMarkup(profilePractice)}
     ${canGlobe ? '<details class="term-fold" data-term-globe><summary>用地球仪看位置和地形</summary><div data-term-globe-stage></div></details>' : ''}
     ${onPhotos ? '<details class="term-fold" data-term-photos data-remember="term-photos"><summary>看这一带的实景照片</summary><div class="photo-gallery" data-term-gallery></div></details>' : ''}
     ${projectMarkup(entry, learning.state.notes[entry.id])}
@@ -186,11 +321,18 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   const panel = host.querySelector('[data-term-feedback]');
   const show = host.querySelector('[data-term-see]');
   const buttons = [...host.querySelectorAll('[data-term-choice]')];
-  const saved = learning.state.widgets[entry.id];
+  const previous = learning.state.widgets[entry.id];
+  const saved = !profilePractice || previous?.profilePractice ? previous : null;
+  const practice = { ...saved?.profilePractice };
   const compareToggle = host.querySelector('[data-term-compare]');
   const comparePanel = host.querySelector('[data-term-comparison]');
   const compareResult = host.querySelector('[data-term-compare-result]');
   const compareReset = host.querySelector('[data-term-compare-reset]');
+  const find = host.querySelector('[data-profile-find]');
+  const conclude = host.querySelector('[data-profile-conclude]');
+  const hint = host.querySelector('[data-profile-hint]');
+  const hintText = host.querySelector('[data-profile-hint-text]');
+  const scope = root.querySelector('[data-profile-scope]');
   let comparing = canCompare && saved?.comparing === true;
   let picks = Array.isArray(saved?.picks) ? [...new Set(saved.picks)]
     .filter(index => Number.isInteger(index) && records[index]).slice(0, 2) : [];
@@ -209,10 +351,16 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   function paintComparison() {
     if (!compareToggle) return;
     compareToggle.setAttribute('aria-expanded', String(comparing));
-    compareToggle.textContent = comparing ? '回到猜想' : compareLabel;
+    compareToggle.textContent = comparing ? (profilePractice ? '回到判断' : '回到猜想') : compareLabel;
     comparePanel.hidden = !comparing;
     host.querySelector('[data-term-prediction]').hidden = comparing;
+    if (scope) scope.hidden = !practice.mainEvidence;
     if (!comparing) return;
+    if (profilePractice) {
+      conclude.hidden = !practice.mainEvidence;
+      hint.hidden = Boolean(practice.mainHint || practice.mainEvidence);
+      hintText.textContent = practice.mainHint && !practice.mainEvidence ? profilePractice.hint : '';
+    }
     highlight(picks, false);
     compareReset.hidden = picks.length === 0;
     if (picks.length === 0) {
@@ -222,6 +370,13 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     const [first, second] = picks.map(index => records[index]);
     if (!second) {
       compareResult.textContent = '已选「' + first.label + '」，再选一处。';
+      return;
+    }
+    if (profilePractice) {
+      const {line, change} = compareProfilePoints(activity, picks);
+      compareResult.textContent = line + (practice.viewingEnds ? '剖面两端一西一东，西边明显更高。' :
+        change > 0 ? comparison.feedback + (practice.mainEvidence === 'independent' ? '已独立找到证据。' : '已根据提示或重试找到证据。') :
+          comparison.again);
       return;
     }
     const evidence = comparison
@@ -238,8 +393,15 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   }
   function inspect(index, control) {
     if (comparing) {
+      if (profilePractice) practice.viewingEnds = false;
       picks = picks.includes(index) ? picks.filter(pick => pick !== index) : [...picks.slice(-1), index];
-      if (picks.length === 2) learning.markCompleted(entry.id);
+      if (picks.length === 2) {
+        if (!profilePractice) learning.markCompleted(entry.id);
+        else if (comparison.pairs.some(pair => pair.every(index => picks.includes(index)))) {
+          practice.mainEvidence ||= practice.mainHint ? 'guided' : 'independent';
+          learning.markCompleted(entry.id);
+        } else practice.mainHint = true;
+      }
       save();
       paintComparison();
       alignTermBoard(host, control, compareResult);
@@ -249,7 +411,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     highlight([index]);
     panel.textContent = point.value === undefined ? '你找到的是「' + point.label + '」。再看看它与其他标记的位置关系。' :
       '你读到「' + point.label + '」为 ' + point.value + (activity.unit ? ' ' + activity.unit : '') + '。';
-    if (revealed) learning.markCompleted(entry.id);
+    if (revealed && !profilePractice) learning.markCompleted(entry.id);
     alignTermBoard(host, control, panel);
   }
   function paint() {
@@ -258,6 +420,8 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       button.setAttribute('aria-pressed', String(String(choice) === button.dataset.termChoice));
     }
     if (!revealed) {
+      if (find) find.hidden = true;
+      show.textContent = '看图核对';
       highlight([]);
       panel.textContent = choice === null ? '' : '记下了。现在可以用图核对。';
       return;
@@ -265,19 +429,42 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     const selected = activity.choices[choice];
     highlight(selected?.focus || []);
     panel.textContent = selected?.feedback || '先在图上点一个标记。读出位置或数值，再试一种解释。';
+    if (find) find.hidden = false;
     show.textContent = '重新猜一次';
   }
   function save() {
-    learning.setRecord('widgets', entry.id, {choice, revealed, comparing, picks});
+    const widget = {choice, revealed, comparing, picks};
+    if (profilePractice) widget.profilePractice = practice;
+    learning.setRecord('widgets', entry.id, widget);
   }
-  compareToggle?.addEventListener('click', () => {
-    comparing = !comparing;
+  function setComparing(value) {
+    comparing = value;
     save();
     if (!comparing) paint();
     paintComparison();
+  }
+  compareToggle?.addEventListener('click', () => {
+    setComparing(!comparing);
     alignTermBoard(host, compareToggle, comparing ? compareResult : show);
   });
+  find?.addEventListener('click', () => {
+    if (practice.viewingEnds) {
+      practice.viewingEnds = false;
+      picks = [];
+    }
+    setComparing(true);
+    comparePanel.querySelector('h2').focus({preventScroll:true});
+    alignTermBoard(host, compareToggle, compareResult);
+  });
+  conclude?.addEventListener('click', () => scope.querySelector('h2').focus());
+  hint?.addEventListener('click', () => {
+    practice.mainHint = true;
+    save();
+    paintComparison();
+    comparePanel.querySelector('h2').focus({preventScroll:true});
+  });
   compareReset?.addEventListener('click', () => {
+    if (profilePractice) practice.viewingEnds = false;
     picks = [];
     save();
     paintComparison();
@@ -286,7 +473,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   for (const button of buttons) {
     button.addEventListener('click', () => {
       choice = button.dataset.termChoice === '?' ? '?' : Number(button.dataset.termChoice);
-      if (revealed && choice !== '?') learning.markCompleted(entry.id);
+      if (revealed && choice !== '?' && !profilePractice) learning.markCompleted(entry.id);
       save();
       paint();
       if (revealed) alignTermBoard(host, button, panel);
@@ -304,7 +491,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       show.textContent = '看图核对';
     } else {
       revealed = true;
-      if (choice !== '?') learning.markCompleted(entry.id);
+      if (choice !== '?' && !profilePractice) learning.markCompleted(entry.id);
     }
     save();
     paint();
@@ -314,6 +501,14 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   if (activity.kind !== 'chart') diagram = mountTermDiagram(figure, activity, inspect);
   paint();
   paintComparison();
+  const disposeProfilePractice = bindProfilePractice(root, profilePractice, practice, save, () => {
+    practice.viewingEnds = true;
+    picks = [0, records.length - 1];
+    setComparing(true);
+    const title = comparePanel.querySelector('h2');
+    title.focus();
+    alignTermBoard(host, title, compareResult);
+  });
   bindReview(root, entry, learning);
   projectBinding(root, entry, learning);
 
@@ -337,5 +532,5 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   if (photoPanel) photoPanel.addEventListener('toggle', () => {
     if (photoPanel.open && !photoRunner) photoRunner = onPhotos(photoPanel.querySelector('[data-term-gallery]'));
   });
-  return () => { diagram?.dispose(); globeRunner?.(); photoRunner?.(); };
+  return () => { diagram?.dispose(); disposeProfilePractice(); globeRunner?.(); photoRunner?.(); };
 }
