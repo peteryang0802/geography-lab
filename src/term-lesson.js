@@ -1,7 +1,8 @@
-import { escapeHtml as escape } from './inquiry-view.js?v=6';
+import { bindPrediction, escapeHtml as escape, methodSummary, renderComparison, renderPrediction } from './inquiry-view.js?v=7';
 import { mountTermDiagram } from './term-diagram.js?v=3';
 import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
-import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=1';
+import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=2';
+import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -52,30 +53,29 @@ function alignTermBoard(host, control, feedback) {
   });
 }
 
-function bindReview(root, entry, learning, restored, remember) {
+function bindReview(root, review, taskId, learning, restored, remember) {
   const info = root.querySelector('[data-term-review]');
   if (!info) return;
   const options = [...info.querySelectorAll('[data-term-answer]')];
   const feedback = info.querySelector('[role=status]');
-  const taskId = 'review-' + entry.id;
   let selected = restored === undefined ? learning.state.answers[taskId]?.option : restored;
-  if (!Number.isInteger(selected) || !entry.review.options[selected]) selected = null;
+  if (!Number.isInteger(selected) || !review.options[selected]) selected = null;
   function paint() {
-    const correct = selected === entry.review.answer;
+    const correct = selected === review.answer;
     for (const [index, candidate] of options.entries()) {
       candidate.setAttribute('aria-pressed', String(selected === index));
     }
     feedback.textContent = selected === null ? '' :
-      (correct ? '这条依据能说得通。' : '再用材料核对。') + entry.review.options[selected][1];
+      (correct ? '这条依据能说得通。' : '再用材料核对。') + review.options[selected][1];
     info.dataset.result = selected === null ? '' : correct ? 'correct' : 'retry';
   }
   for (const button of options) {
     button.addEventListener('click', () => {
       const index = Number(button.dataset.termAnswer);
-      const correct = index === entry.review.answer;
+      const correct = index === review.answer;
       selected = index;
       learning.setRecord('answers', taskId, {option: index, solved: correct});
-      remember(selected);
+      remember?.(selected);
       paint();
       alignTermBoard(info, button, feedback);
     });
@@ -260,7 +260,15 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
+  const transfer = !reviewOnly && alignedTransfer(entry.id);
+  const practiceReview = transfer ? { ...transfer,
+    options: transfer.options.map(({label, feedback}) => [label, feedback]),
+  } : entry.review;
+  const choices = activity.choices.map(item => item.label);
+  const opening = `<div class="geo-opening"><h3>${escape(entry.question)}</h3>
+    ${renderPrediction(choices, activity.prompt)}</div>`;
   const observation = `<section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation"${profilePractice ? ' data-profile-practice' : ''}>
+      <p class="geo-observation-aim" data-opening-observation></p>
       <div class="term-board-tools">
         <p>${activity.kind === 'chart' ? '点条形，看读数。' : '点图上的字母读图。'}</p>
         ${canCompare ? `<button type="button" class="button" data-term-compare aria-expanded="false" aria-controls="term-compare-panel">${compareLabel}</button>` : ''}
@@ -291,13 +299,14 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
       ${renderTermMarkPractice(markPractice)}
     </section>`;
   const review = `<section class="term-review" data-term-review data-inquiry-section="term-review">
-      <h3 class="geo-review-prompt" tabindex="-1">${escape(entry.review.prompt)}</h3>
+      <h3 class="geo-review-prompt" tabindex="-1">${escape(practiceReview.prompt)}</h3>
+      ${transfer ? renderComparison(transfer.evidence) : ''}
       <div class="term-choices" role="group" aria-label="选择材料支持的解释">
-        ${entry.review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
+        ${practiceReview.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
       </div>
       <p class="term-feedback" role="status"></p>
     </section>`;
-  const recap = `<p class="term-takeaway geo-recap"><strong>用一句话记住</strong> ${escape(entry.takeaway)}</p>
+  const recap = `
     ${projectMarkup(entry, learning.state.notes[entry.id])}
     ${canGlobe || onPhotos || related ? `<details class="term-fold" data-remember="term-extras">
       <summary>课后再看</summary>
@@ -311,13 +320,14 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     </nav>`;
   root.innerHTML = `<article class="term-lesson geo-lesson" data-extended-lesson="${escape(entry.id)}">
     <header class="term-intro">
-      <p class="term-bookname">${entry.project ? '主题探究 · ' : ''}${lessonPage}</p>
+      <p class="term-bookname">${escape(term.title)} · ${entry.project ? '主题探究 · ' : ''}${lessonPage}</p>
       <h1>${escape(entry.title)}</h1>
     </header>
     ${lessonFlow([
-      { id: 'opening', label: '带着问题', content: `<div class="geo-opening"><h3>${escape(entry.question)}</h3></div>`, next: '看图找线索' },
-      { id: 'term-observation', label: '看图找线索', content: observation, next: profilePractice ? '用剖面作判断' : '换份材料复习' },
-      ...(profilePractice ? [{ id: 'profile', label: '用剖面作判断', content: profilePracticeMarkup(profilePractice), next: '换份材料复习' }] : []),
+      { id: 'opening', label: '带着问题', content: opening, next: '看图找线索' },
+      { id: 'term-observation', label: '看图找线索', content: observation, next: profilePractice ? '用剖面作判断' : '记住读图方法' },
+      ...(profilePractice ? [{ id: 'profile', label: '用剖面作判断', content: profilePracticeMarkup(profilePractice), next: '记住读图方法' }] : []),
+      { id: 'method', label: '记住读图方法', content: methodSummary(alignedMethod(entry.id, entry.takeaway)), next: '换份材料复习' },
       { id: 'term-review', label: '换份材料复习', content: review, next: '回顾这节课' },
       { id: 'recap', label: '回顾这节课', content: recap },
     ])}
@@ -347,6 +357,12 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     .filter(index => Number.isInteger(index) && records[index]).slice(0, 2) : [];
   let choice = saved?.choice === '?' || Number.isInteger(saved?.choice) && activity.choices[saved.choice] ? saved.choice : null;
   let revealed = saved?.revealed === true;
+  const startingPoint = host.querySelector('[data-opening-observation]');
+  const paintOpening = bindPrediction(root, choice, index => {
+    choice = index;
+    revealed = false;
+    setComparing(false);
+  });
   const chartButtons = [...figure.querySelectorAll('[data-bar], [data-key]')];
   let diagram;
   function highlight(indices, showFlows = revealed) {
@@ -436,6 +452,8 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     alignTermBoard(host, control, panel);
   }
   function paint() {
+    paintOpening(choice);
+    startingPoint.textContent = !revealed && choices[choice] ? '带着「' + choices[choice] + '」这个想法去看图。' : '';
     show.classList.toggle('primary', !revealed);
     for (const button of buttons) {
       button.setAttribute('aria-pressed', String(String(choice) === button.dataset.termChoice));
@@ -526,7 +544,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     isGuided() { return revealed; },
     complete() { learning.markCompleted(entry.id); },
     transfer() {
-      flow.show('term-review');
+      flow.show('method');
     },
   });
   paintComparison();
@@ -539,7 +557,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, r
     title.focus();
     alignTermBoard(host, title, compareResult);
   });
-  bindReview(root, entry, learning, reviewPick, value => {
+  bindReview(root, practiceReview, transfer?.id || 'review-' + entry.id, learning, transfer ? undefined : reviewPick, transfer ? undefined : value => {
     reviewPick = value;
     save();
   });

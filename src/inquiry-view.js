@@ -1,5 +1,6 @@
 import { evidencePhoto, responsivePhoto } from './responsive-photo.js?v=7';
-import { lessonFlow } from './lesson-flow.js?v=1';
+import { lessonFlow } from './lesson-flow.js?v=2';
+import { alignedMethod } from './lesson-practice-transfer.js?v=1';
 
 export const inquiryViews = {
   recall: {
@@ -32,6 +33,79 @@ export function selectInquiryView(search) {
 
 export const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+
+const openingChoices = {
+  intro: ['坡脚还留着水', '坡顶还留着水'],
+  'earth-space': ['第 1 颗', '第 2 颗', '第 3 颗'],
+  spaceflight: ['先对齐桥和村子', '直接比两张图的水面'],
+  'earth-model': ['只报大概方位', '报两条线的交点'],
+  'earth-motion': ['两地同时看到日出', '两地先后看到日出'],
+  'project-earth': ['先找有固体地表的行星', '先找最靠近太阳的行星'],
+  maps: ['先认图例里的步道', '先找图上的入口'],
+  contours: ['低洼处更容易积水', '较高处更容易积水'],
+  'project-orienteering': ['先找能走的桥', '直接沿最短的线过河'],
+  'land-ocean': ['太平洋', '大西洋', '印度洋'],
+  'land-change': ['先看贝壳嵌在岩层哪里', '先看今天的山有多高'],
+  'project-seafloor': ['刚离开岸时', '从近岸到深海的中间一段', '到了深海平底时'],
+  weather: ['先查雷电预警', '先比气温'],
+  'temp-rain': ['最热月和雨最多的月是同一个月', '两个最高值可能出现在不同月份'],
+  climate: ['先比两地多雨的月份', '先比两地一年的总雨量'],
+  'climate-life': ['先对照屋顶高低', '先找排水口'],
+  'project-nest': ['敞开的风口', '有树遮挡处', '步道边'],
+  people: ['人多的地方一定更挤', '面积不同，只比人数还不够'],
+  cooperation: ['先找能按时到的方案', '先选运费最低的方案'],
+  'project-made-in-china': ['先找测量结果和条件', '先比较它是不是最保温'],
+};
+
+export function renderPrediction(choices, prompt = '先选一个想法，到图上核对。') {
+  return `<div class="geo-prediction" data-geo-prediction>
+    <p id="geo-prediction-prompt">${escapeHtml(prompt)}</p>
+    <div class="term-choices" role="group" aria-labelledby="geo-prediction-prompt">
+      ${choices.map((choice, index) => `<button type="button" class="button" data-geo-pick="${index}" aria-pressed="false">${escapeHtml(choice)}</button>`).join('')}
+    </div>
+    <p class="geo-prediction-status" role="status"></p>
+  </div>`;
+}
+
+export function bindPrediction(root, selected, save) {
+  const prediction = root.querySelector('[data-geo-prediction]');
+  const buttons = [...prediction.querySelectorAll('[data-geo-pick]')];
+  const status = prediction.querySelector('[role=status]');
+  function paint(index) {
+    buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
+    status.textContent = buttons[index] ? '想法记下了。把它带到图上核对。' : '';
+  }
+  buttons.forEach((button, index) => {
+    button.addEventListener('click', () => {
+      paint(index);
+      save(index, button.textContent);
+    });
+  });
+  paint(selected);
+  return paint;
+}
+
+export function bindInquiryPrediction(root, entry, selected, save) {
+  const observation = root.querySelector('[data-opening-observation]');
+  function remember(choice) {
+    observation.textContent = choice ? '带着「' + choice + '」这个想法去看图。' : '';
+  }
+  bindPrediction(root, selected, (index, choice) => {
+    remember(choice);
+    save(index);
+  });
+  remember(openingChoices[entry.id][selected]);
+}
+
+export function methodSummary(text) {
+  return `<section class="geo-recap geo-method"><h3>把方法带走</h3><p>${escapeHtml(text)}</p></section>`;
+}
+
+export function renderComparison(material) {
+  if (!Array.isArray(material)) return '<p class="evidence">' + escapeHtml(material) + '</p>';
+  return '<ul class="geo-comparison" aria-label="可对照的记录">' + material.map(([first, record]) =>
+    '<li><strong>' + escapeHtml(first) + '</strong><p>' + escapeHtml(record) + '</p></li>').join('') + '</ul>';
+}
 
 const evidencePhotos = {
   intro: {
@@ -106,13 +180,15 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, activityS
   const illustration = photo ? photoFigure(photo) : '';
   const evidence = `<section class="inquiry-evidence" data-inquiry-section="evidence" aria-labelledby="evidence-title">
       <header class="inquiry-section-head"><h2 id="evidence-title">${view.look}</h2></header>
+      <p class="geo-observation-aim" data-opening-observation></p>
+      <p class="geo-observation-aim">${escapeHtml(data.guess)}</p>
       ${activityMarkup}
     </section>`;
   const opening = `<div class="geo-opening" data-inquiry-section="opening">
       <h3>${escapeHtml(data.question)}</h3>
-      <p>${escapeHtml(data.guess)}</p>
+      ${renderPrediction(openingChoices[entry.id])}
     </div>`;
-  const recap = `<p class="geo-recap">${escapeHtml(data.closing)}</p>
+  const recap = `
     <details class="inquiry-note" data-remember="lesson-extras">
       <summary>课后再看</summary>
       ${transferMarkup}
@@ -134,7 +210,8 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, activityS
       ...activitySteps.map((step, index) => ({ ...step, next: activitySteps[index + 1]?.label || '读懂材料' })),
       { id: 'reading', label: '读懂材料', content: visualReading ? oceanLifeFigure() : evidenceReading(entry, data, view, viewId !== 'nearby' ? illustration : ''), next: '找一条依据' },
       { id: 'proof', label: '找一条依据', content: practices[0], next: '做一题' },
-      { id: 'lesson-practice', label: '做一题', content: practices[1], next: '换份材料再试' },
+      { id: 'lesson-practice', label: '做一题', content: practices[1], next: '记住读图方法' },
+      { id: 'method', label: '记住读图方法', content: methodSummary(alignedMethod(entry.id, data.closing)), next: '换份材料再试' },
       { id: 'lesson-practice-transfer', label: '换份材料再试', content: practices[2], next: '回顾这节课' },
       { id: 'recap', label: '回顾这节课', content: recap },
     ])}

@@ -16,6 +16,7 @@ const pageNumbers = [
 ];
 
 async function check(engine, name, viewport) {
+  const { alignedTransfer } = await import('../src/lesson-practice-transfer.js');
   const browser = await engine.launch(engine === chromium && process.env.GEOLAB_CHROME ?
     { executablePath: process.env.GEOLAB_CHROME } : {});
   try {
@@ -102,11 +103,14 @@ async function check(engine, name, viewport) {
         if (index === 0) await screenshot(book + '-station');
         await moveTo(lesson, 'term-review');
         const review = lesson.locator('[data-term-review]');
-        await review.locator('[data-term-answer]').nth((entry.review.answer + 1) % entry.review.options.length).click();
+        const transfer = alignedTransfer(entry.id);
+        const answer = transfer?.answer ?? entry.review.answer;
+        const options = transfer?.options ?? entry.review.options;
+        await review.locator('[data-term-answer]').nth((answer + 1) % options.length).click();
         assert.equal(await review.getAttribute('data-result'), 'retry');
-        await review.locator('[data-term-answer]').nth(entry.review.answer).click();
+        await review.locator('[data-term-answer]').nth(answer).click();
         assert.equal(await review.getAttribute('data-result'), 'correct');
-        assert.ok((await review.locator('[role=status]').innerText()).endsWith(entry.review.options[entry.review.answer][1]));
+        assert.ok((await review.locator('[role=status]').innerText()).endsWith(transfer ? options[answer].feedback : options[answer][1]));
         await moveTo(lesson, 'recap');
         if (entry.project) {
           const draft = lesson.locator('#term-project-note');

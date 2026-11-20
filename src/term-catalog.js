@@ -1,4 +1,5 @@
 import { escapeHtml as escape } from './inquiry-view.js?v=6';
+import { alignedTransfer } from './lesson-practice-transfer.js?v=1';
 
 export const volumes = [
   { id: '7a', title: '七年级上册', subtitle: '从地球仪出发，读懂地图、地形和气候', theme: 'forest', legendPage: 125 },
@@ -52,9 +53,10 @@ export function renderVolumeDirectory(volume, state, returning) {
       <ul>${chapter.lessons.map(entry => {
         const widget = state.widgets[entry.id];
         const evidence = widget?.proof?.result || widget?.profilePractice?.mainEvidence;
-        const review = state.answers['review-' + entry.id];
+        const transfer = alignedTransfer(entry.id);
+        const reviewed = state.answers['review-' + entry.id]?.solved || (transfer && state.answers[transfer.id]?.solved);
         const progress = evidence === 'independent' ? '独立找过证据 · ' : evidence === 'guided' ? '核对后找到证据 · '
-          : review?.solved ? '换材料曾答对 · ' : state.visits[entry.id] ? '看过 · ' : '';
+          : reviewed ? '换材料曾答对 · ' : state.visits[entry.id] ? '看过 · ' : '';
         return `<li><a href="${entryUrl(entry.id)}" data-volume-entry="${entry.id}" ${entry.id === (returning || recent)?.id ? 'aria-current="location"' : ''}>
           <span>${escape(entry.title)}${entry.project ? '<small> · 主题探究</small>' : ''}</span>
           <small>${progress}${entry.page ? '第 ' + entry.page + ' 页' : ''}</small></a></li>`;
