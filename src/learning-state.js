@@ -74,8 +74,12 @@ export function createLearningStore({
     if (!Object.hasOwn(ids, group) || !ids[group].has(id)) return undefined;
     if (group === 'answers') {
       if (!isRecord(value) || typeof value.solved !== 'boolean') return undefined;
-      if (!Number.isInteger(value.option) || value.option < 0 || value.option >= optionCounts.get(id)) return undefined;
-      return { option: value.option, solved: value.solved };
+      const hasOption = Number.isInteger(value.option) && value.option >= 0 && value.option < optionCounts.get(id);
+      if (!hasOption && !(value.option === null && value.hinted === true && !value.solved)) return undefined;
+      const result = { option: value.option, solved: value.solved };
+      if (value.hinted === true) result.hinted = true;
+      if (typeof value.firstCorrect === 'boolean') result.firstCorrect = value.firstCorrect;
+      return result;
     }
     if (group === 'visits') return isTime(value) ? value : undefined;
     if (group === 'notes') return typeof value === 'string' ? value.slice(0, 2000) : undefined;
@@ -193,7 +197,7 @@ export function createLearningStore({
           const existing = state[group][id];
           if (group === 'answers' && existing?.solved && !value.solved) continue;
           if (group !== 'answers' && group !== 'visits' && Object.hasOwn(state[group], id)) continue;
-          setRecord(group, id, value);
+          setRecord(group, id, group === 'answers' ? { ...existing, ...value } : value);
         } else assignRecord(group, id, value);
       }
     }
@@ -231,6 +235,21 @@ export function createLearningStore({
     state,
     refresh,
     setRecord,
+    answerTask(id, option, correct) {
+      refreshRecord('answers', id);
+      const previous = state.answers[id];
+      const firstCorrect = Number.isInteger(previous?.option)
+        ? previous.firstCorrect === true && previous.option === option && correct
+        : !previous?.hinted && correct;
+      setRecord('answers', id, { ...previous, option, solved: correct, firstCorrect });
+      return state.answers[id];
+    },
+    hintTask(id) {
+      refreshRecord('answers', id);
+      const previous = state.answers[id];
+      if (previous?.hinted || previous?.solved) return;
+      setRecord('answers', id, { option: null, solved: false, ...previous, hinted: true });
+    },
     setResume,
     setBookmark: (id, saved) => setRecord('bookmarks', id, saved),
     recordVisit: id => setRecord('visits', id, Date.now()),

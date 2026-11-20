@@ -189,6 +189,7 @@ export function renderInquiry({ entry, textbook, data, activityMarkup, activityS
       ${renderPrediction(openingChoices[entry.id])}
     </div>`;
   const recap = `
+    <p class="geo-assessment-label" data-assessment-summary></p>
     <details class="inquiry-note" data-remember="lesson-extras">
       <summary>课后再看</summary>
       ${transferMarkup}

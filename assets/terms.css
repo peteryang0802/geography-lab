@@ -274,6 +274,17 @@
 }
 .geo-step :is(.geo-step-next, .next-lesson).primary { background: var(--green); border-color: var(--green); color: #fffefa; }
 .geo-step :is(.geo-step-next, .next-lesson).primary:hover { background: #22634c; }
+.geo-step .geo-step-next.geo-step-skip.primary {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding-inline: 0;
+  text-decoration: underline;
+  text-underline-offset: .18em;
+  font-weight: 500;
+}
+.geo-assessment-label { margin: 8px 0 0; color: var(--muted); font-size: .89rem; }
+[data-assessment="retry"] .geo-assessment-label { color: var(--geo-retry-ink); }
 /* Leave navigation available while the current exercise has the visual priority. */
 .geo-step:has(> .geo-step-body :is(.button.primary, [data-rain-test][aria-pressed="false"], [data-rain-test][aria-pressed="true"] + [data-rain-drain][aria-pressed="false"]):not(:disabled, [hidden], [hidden] *, details:not([open]) *, .next-lesson)) .geo-step-next,
 .geo-step:has([data-geo-prediction]):not(:has([data-geo-pick][aria-pressed="true"])) .geo-step-next,

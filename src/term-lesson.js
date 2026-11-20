@@ -3,6 +3,7 @@ import { mountTermDiagram } from './term-diagram.js?v=3';
 import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
 import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=3';
 import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=1';
+import { assessmentState, paintAssessment } from './assessment.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -58,9 +59,13 @@ function bindReview(root, review, taskId, learning, restored, remember) {
   if (!info) return;
   const options = [...info.querySelectorAll('[data-term-answer]')];
   const feedback = info.querySelector('[role=status]');
-  let selected = restored === undefined ? learning.state.answers[taskId]?.option : restored;
-  if (!Number.isInteger(selected) || !review.options[selected]) selected = null;
+  let record = learning.state.answers[taskId];
+  if (!record && Number.isInteger(restored) && review.options[restored]) {
+    learning.setRecord('answers', taskId, { option: restored, solved: restored === review.answer });
+    record = learning.state.answers[taskId];
+  }
   function paint() {
+    const selected = record?.option ?? null;
     const correct = selected === review.answer;
     for (const [index, candidate] of options.entries()) {
       candidate.setAttribute('aria-pressed', String(selected === index));
@@ -68,14 +73,14 @@ function bindReview(root, review, taskId, learning, restored, remember) {
     feedback.textContent = selected === null ? '' :
       (correct ? '这条依据能说得通。' : '再用材料核对。') + review.options[selected][1];
     info.dataset.result = selected === null ? '' : correct ? 'correct' : 'retry';
+    paintAssessment(info, assessmentState(record, review.answer));
   }
   for (const button of options) {
     button.addEventListener('click', () => {
       const index = Number(button.dataset.termAnswer);
       const correct = index === review.answer;
-      selected = index;
-      learning.setRecord('answers', taskId, {option: index, solved: correct});
-      remember?.(selected);
+      record = learning.answerTask(taskId, index, correct);
+      remember?.(index);
       paint();
       alignTermBoard(info, button, feedback);
     });
@@ -246,26 +251,35 @@ function bindProfilePractice(root, config, practice, save, recheck) {
   return () => diagram?.dispose();
 }
 
-function reviewMarkup(review, evidence = '') {
-  return `<section class="term-review" data-term-review data-inquiry-section="term-review">
+function reviewMarkup(review) {
+  return `<section class="term-review" data-term-review data-task-id="${escape(review.id)}" data-inquiry-section="term-review">
       <h3 class="geo-review-prompt" tabindex="-1">${escape(review.prompt)}</h3>
-      ${evidence}
+      ${review.evidence ? renderComparison(review.evidence) : ''}
       <div class="term-choices" role="group" aria-label="选择材料支持的解释">
         ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
       </div>
       <p class="term-feedback" role="status"></p>
+      <p class="geo-assessment-label" data-assessment-label></p>
     </section>`;
 }
 
-export function renderTermPractice(root, { entry, learning }) {
-  const key = 'review-' + entry.id;
-  const restored = learning.state.answers[key]?.option ?? learning.state.widgets[entry.id]?.reviewPick;
+function termReviewTask(entry, taskId) {
+  const legacy = { ...entry.review, id: 'review-' + entry.id };
+  const transfer = alignedTransfer(entry.id);
+  if (!transfer || taskId === legacy.id) return legacy;
+  return { ...transfer, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
+}
+
+export function renderTermPractice(root, { entry, learning, taskId }) {
+  const review = termReviewTask(entry, taskId);
+  const legacy = review.id === 'review-' + entry.id;
+  const restored = legacy ? learning.state.widgets[entry.id]?.reviewPick : undefined;
   root.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">
     <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>
-    ${reviewMarkup(entry.review)}
+    ${reviewMarkup(review)}
   </article>`;
-  bindReview(root, entry.review, key, learning, restored, reviewPick =>
-    learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}));
+  bindReview(root, review, review.id, learning, restored, legacy ? reviewPick =>
+    learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}) : undefined);
 }
 
 export function renderTermLesson(root, { entry, term, next, related, learning, initialStep, onStep, onGlobe, onPhotos }) {
@@ -282,10 +296,8 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
-  const transfer = alignedTransfer(entry.id);
-  const practiceReview = transfer ? { ...transfer,
-    options: transfer.options.map(({label, feedback}) => [label, feedback]),
-  } : entry.review;
+  const practiceReview = termReviewTask(entry);
+  const legacyReview = practiceReview.id === 'review-' + entry.id;
   const choices = activity.choices.map(item => item.label);
   const opening = `<div class="geo-opening"><h3>${escape(entry.question)}</h3>
     ${renderPrediction(choices, activity.prompt)}</div>`;
@@ -320,8 +332,9 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
       </div>` : ''}
       ${renderTermMarkPractice(markPractice)}
     </section>`;
-  const review = reviewMarkup(practiceReview, transfer ? renderComparison(transfer.evidence) : '');
+  const review = reviewMarkup(practiceReview);
   const recap = `
+    <p class="geo-assessment-label" data-assessment-summary></p>
     ${projectMarkup(entry, learning.state.notes[entry.id])}
     ${canGlobe || onPhotos || related ? `<details class="term-fold" data-remember="term-extras">
       <summary>课后再看</summary>
@@ -576,10 +589,10 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     title.focus();
     alignTermBoard(host, title, compareResult);
   });
-  bindReview(root, practiceReview, transfer?.id || 'review-' + entry.id, learning, transfer ? undefined : reviewPick, transfer ? undefined : value => {
+  bindReview(root, practiceReview, practiceReview.id, learning, legacyReview ? reviewPick : undefined, legacyReview ? value => {
     reviewPick = value;
     save();
-  });
+  } : undefined);
   projectBinding(root, entry, learning);
 
   const globe = root.querySelector('[data-term-globe]');

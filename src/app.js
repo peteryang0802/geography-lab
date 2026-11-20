@@ -6,6 +6,7 @@ import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { renderTextbookLegend } from './textbook-legend.js';
 import { createLearningStore } from './learning-state.js';
+import { assessmentLabels, assessmentState, paintAssessment } from './assessment.js?v=1';
 import { inquiryViews, renderInquiry, selectInquiryView, bindInquiryPrediction, renderComparison, escapeHtml as escape } from './inquiry-view.js?v=7';
 import { inquiries } from './inquiries.js?v=6';
 import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=6';
@@ -25,7 +26,17 @@ const inquiryView = inquiryViews[viewId];
 document.documentElement.dataset.inquiryView = viewId;
 const notice = document.querySelector('#announcement');
 const work = [...lessons, ...projects];
+const allLessons = [...work, ...extendedEntries];
 const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
+function activeTasks(lesson) {
+  const transfer = alignedTransfer(lesson.id);
+  if (lesson.term) return [transfer || lesson.tasks[0]];
+  return [alignedPractice(lesson.id) || lesson.tasks[0], transfer || lesson.tasks[1]];
+}
+const tasksByLesson = new Map(allLessons.map(lesson => {
+  const tasks = new Map([...activeTasks(lesson), ...lesson.tasks].map(task => [task.id, task]));
+  return [lesson.id, [...tasks.values()]];
+}));
 const byConcept = new Map(concepts.map(concept => [concept.id, concept]));
 const byLab = new Map(labs.map(lab => [lab.id, lab]));
 const loadedVolumes = new Map();
@@ -42,9 +53,7 @@ let storeTimer;
 let renderVersion = 0;
 let resettingLearning = false;
 const learning = createLearningStore({
-  lessons: [...work, ...extendedEntries].map(lesson => ({ ...lesson, tasks: [
-    ...lesson.tasks, ...[alignedPractice(lesson.id), alignedTransfer(lesson.id)].filter(Boolean),
-  ] })), concepts, labs,
+  lessons: allLessons.map(lesson => ({ ...lesson, tasks: tasksByLesson.get(lesson.id) })), concepts, labs,
   activityIds: [...activityIds, ...work.flatMap(lesson => ['-reading-practice', '-opening-guess'].map(kind => lesson.id + kind))],
   namespace: viewId === 'recall' ? '' : viewId,
   onStorageError: () => {
@@ -152,7 +161,8 @@ function taskHtml(task, index, inline = false) {
       ${task.options.map((option, i) => `<button type="button" class="option ${i === selected && !correct ? 'try-again' : ''}" aria-pressed="${i === selected}" data-option="${i}"><span class="option-letter" aria-hidden="true">${String.fromCharCode(65 + i)}</span>${escape(option.label)}</button>`).join('')}
     </div>
     <p class="feedback ${active && !correct ? 'try-again' : ''}" aria-live="polite" ${active ? '' : 'hidden'}>${active ? escape((correct ? '找对了。' : '再看看。') + task.options[selected].feedback) : ''}</p>
-    ${task.hint ? `<details data-remember="hint-${escape(task.id)}"><summary>看看提示</summary><p>${escape(task.hint)}</p></details>` : ''}
+    <p class="geo-assessment-label" data-assessment-label></p>
+    ${task.hint ? `<details data-assessment-hint data-remember="hint-${escape(task.id)}"><summary>看看提示</summary><p>${escape(task.hint)}</p></details>` : ''}
   </article>`;
 }
 
@@ -162,12 +172,17 @@ function bindTasks(tasks) {
     if (!element) continue;
     const options = [...element.querySelectorAll('[data-option]')];
     const feedback = element.querySelector('.feedback');
+    const hint = element.querySelector('[data-assessment-hint]');
+    hint?.addEventListener('toggle', () => {
+      if (hint.open) learning.hintTask(task.id);
+    });
+    paintAssessment(element, assessmentState(state.answers[task.id], task.answer));
     for (const button of options) {
       button.addEventListener('click', () => {
         const option = Number(button.dataset.option);
         const correct = option === task.answer;
-        const solved = correct || state.answers[task.id]?.solved === true;
-        learning.setRecord('answers', task.id, { option, solved });
+        if (hint?.open) learning.hintTask(task.id);
+        const record = learning.answerTask(task.id, option, correct);
         for (const item of options) {
           const chosen = item === button;
           item.setAttribute('aria-pressed', String(chosen));
@@ -177,6 +192,7 @@ function bindTasks(tasks) {
         feedback.classList.toggle('try-again', !correct);
         feedback.hidden = false;
         element.dataset.result = correct ? 'correct' : 'retry';
+        paintAssessment(element, assessmentState(record, task.answer));
         if (element.closest('.geo-step')) {
           const materials = element.querySelector('.geo-material-fold');
           if (!correct && materials) materials.open = true;
@@ -252,7 +268,7 @@ function showLesson(lesson, storedView) {
   }));
   const proofKey = lesson.id + '-reading-practice';
   const plan = lessonReadingPractice(lesson, data);
-  const tasks = [alignedPractice(lesson.id) || lesson.tasks[0], alignedTransfer(lesson.id) || lesson.tasks[1]];
+  const tasks = activeTasks(lesson);
   const route = activeHash;
   const practices = [renderReadingPractice(plan, state.activities[proofKey]), ...tasks.map((task, index) => taskHtml(task, index, true))];
   main.innerHTML = renderInquiry({
@@ -687,23 +703,22 @@ function explore() {
 }
 
 function review() {
-  const allLessons = [...work, ...extendedEntries];
   const resume = allLessons.find(lesson => lesson.id === state.resume?.lessonId);
   const resumeRoute = resume && state.resume.route;
-  const needsReview = allLessons.filter(lesson => lesson.tasks.some(task => {
-    const selection = state.answers[task.id]?.option;
-    return Number.isInteger(selection) && selection !== task.answer;
-  }));
+  const needsReview = allLessons.flatMap(lesson => tasksByLesson.get(lesson.id)
+    .filter(task => assessmentState(state.answers[task.id], task.answer) === 'retry')
+    .map(task => ({ lesson, task })));
   const recent = allLessons.filter(lesson => lesson !== resume && state.visits[lesson.id])
     .sort((a, b) => Number(state.visits[b.id]) - Number(state.visits[a.id])).slice(0, 8);
-  const list = (items, empty) => items.length ? `<div class="review-list">${items.map(lesson => `<div class="review-item">
-    <a href="#/practice/${lesson.id}">${escape(lesson.title)}</a><small>${doneCount(lesson)} / ${lesson.tasks.length} 题</small></div>`).join('')}</div>` : `<p class="empty">${empty}</p>`;
+  const retryList = needsReview.length ? `<div class="review-list">${needsReview.map(({ lesson, task }) => `<div class="review-item">
+    <a href="#/practice/${lesson.id}?task=${encodeURIComponent(task.id)}">${escape(lesson.title)}${task.prompt ? ' · ' + escape(task.prompt) : ''}</a><small>${assessmentLabels.retry}</small></div>`).join('')}</div>`
+    : '<p class="empty">答错后，可以在这里打开原题和材料再试。</p>';
   main.innerHTML = `
     <article class="geo-utility">${pageIntro('我的复习', '')}
     ${resume ? `<a class="button primary volume-resume" href="${escape(resumeRoute)}"><span><small>继续上次</small><strong>${escape(resume.title)}</strong></span>${arrow}</a>` : ''}
     <div class="lesson-shell geo-review-menu">
       <div class="lesson-content">
-        <section class="panel"><h2>再试一次</h2>${list(needsReview, '如果一道题想再查证，它所在的课会显示在这里。')}</section>
+        <section class="panel"><h2>再试一次</h2>${retryList}</section>
         ${recent.length ? '<details class="panel course-details" data-remember="review-recent"><summary>最近看过</summary><div class="review-list">' + recent.map(lesson => `<div class="review-item"><a href="${lessonUrl(lesson.id)}?from=%23%2Freview">${escape(lesson.title)}</a></div>`).join('') + '</div></details>' : ''}
         <section class="panel"><h2>按课练习</h2><form class="review-practice">
           <label class="field-label" for="practice-lesson">选一课</label>
@@ -753,9 +768,11 @@ function review() {
   });
 }
 
-function practice(lesson) {
+function practice(lesson, taskId) {
   const intro = pageIntro(lesson.title, '', '按课练习');
-  const tasks = lesson.tasks;
+  const available = tasksByLesson.get(lesson.id);
+  const selected = available.find(task => task.id === taskId);
+  const tasks = selected ? [selected] : available;
   if (tasks.length === 1) {
     main.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">${intro}${taskHtml(tasks[0], 0, true)}</article>`;
   } else {
@@ -764,7 +781,7 @@ function practice(lesson) {
       next: index < tasks.length - 1 ? '下一题' : '',
     })), '练习进度');
   }
-  bindTasks(lesson.tasks);
+  bindTasks(tasks);
 }
 
 function legend(query) {
@@ -907,7 +924,7 @@ async function loadVolume(id) {
   return loadedVolumes.get(id);
 }
 
-function showExpandedLesson(summary, route, previous, view, version, practiceOnly) {
+function showExpandedLesson(summary, route, previous, view, version, practiceOnly, taskId) {
   const volume = volumeById.get(summary.term);
   const valid = () => renderVersion === version;
   let drawing;
@@ -920,7 +937,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=8', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=9', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson, renderTermPractice}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
@@ -929,7 +946,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       const entry = lessons.get(summary.id);
       if (!entry) throw new Error('volume entry unavailable');
       if (practiceOnly) {
-        renderTermPractice(main, { entry, learning });
+        renderTermPractice(main, { entry, learning, taskId });
         if (retries) main.focus({preventScroll: true});
         document.title = entry.title + ' · 地理实验台';
         return;
@@ -1016,7 +1033,7 @@ function render() {
   } else if (page === 'textbook') main.innerHTML = textbookDirectory(priorInVolume || undefined, true);
   else if (volume?.id === '7a') main.innerHTML = sevenUpperHome(priorInVolume);
   else if (volume) main.innerHTML = renderVolumeDirectory(volume, state, priorInVolume);
-  else if (expanded) showExpandedLesson(expanded, next, previous, view, version, page === 'practice');
+  else if (expanded) showExpandedLesson(expanded, next, previous, view, version, page === 'practice', query.get('task'));
   else if (lesson) {
     showLesson(lesson, view);
     const cameFrom = previous ? routeParts(previous) : null;
@@ -1032,7 +1049,7 @@ function render() {
     if (storedQuery) Object.assign(exploreState, storedQuery);
     explore();
   } else if (page === 'review') review();
-  else if (page === 'practice' && byLesson.has(id)) practice(byLesson.get(id));
+  else if (page === 'practice' && byLesson.has(id)) practice(byLesson.get(id), query.get('task'));
   else if (page === 'legend') legend(query);
   else if (page === 'sources') sources();
   else main.innerHTML = `${pageIntro('这个页面没有找到', '可以从课本目录重新出发。')}<a class="button primary" href="#/">回四册目录</a>`;
