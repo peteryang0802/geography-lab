@@ -12,6 +12,7 @@ export const volumeById = new Map(volumes.map(volume => [volume.id, volume]));
 export const extendedEntries = volumes.flatMap(volume => (index[volume.id] || []).flatMap(chapter =>
   chapter.lessons.map(entry => ({ ...entry, term: volume.id, chapter: chapter.title,
     tasks: [{ id: 'review-' + entry.id, options: Array.from({ length: entry.optionCount }), answer: entry.answer }],
+    checks: entry.checks.map(task => ({ ...task, options: Array.from({ length: task.optionCount }) })),
   }))));
 export const termEntryById = new Map(extendedEntries.map(entry => [entry.id, entry]));
 export const termUrl = id => '#/term/' + id;

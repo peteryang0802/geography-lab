@@ -6,7 +6,7 @@ import { mountMapDirection } from './map-direction.js?v=6';
 import { getTextbookPosition, textbookChapters, textbookEntries } from './textbook.js';
 import { renderTextbookLegend } from './textbook-legend.js';
 import { createLearningStore } from './learning-state.js';
-import { assessmentLabels, assessmentState, paintAssessment } from './assessment.js?v=1';
+import { assessmentLabels, assessmentState, paintAssessment } from './assessment.js?v=2';
 import { inquiryViews, renderInquiry, selectInquiryView, bindInquiryPrediction, renderComparison, escapeHtml as escape } from './inquiry-view.js?v=7';
 import { inquiries } from './inquiries.js?v=6';
 import { lessonActivities, activityIds, activityKey, mountLessonVisual } from './lesson-activities.js?v=6';
@@ -30,7 +30,7 @@ const allLessons = [...work, ...extendedEntries];
 const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
 function activeTasks(lesson) {
   const transfer = alignedTransfer(lesson.id);
-  if (lesson.term) return [transfer || lesson.tasks[0]];
+  if (lesson.term) return lesson.checks.length ? lesson.checks : [transfer || lesson.tasks[0]];
   return [alignedPractice(lesson.id) || lesson.tasks[0], transfer || lesson.tasks[1]];
 }
 const tasksByLesson = new Map(allLessons.map(lesson => {
@@ -911,7 +911,7 @@ function restoreInquiryPosition(view) {
 async function loadVolume(id) {
   if (!loadedVolumes.has(id)) {
     const suffix = volumeRetries.get(id) || 0;
-    const dataVersion = ['7b', '8a'].includes(id) ? 5 : 4;
+    const dataVersion = id === '8a' ? 6 : id === '7b' ? 5 : 4;
     const url = new URL(`./term-${id}.js?v=${dataVersion}${suffix ? '&retry=' + suffix : ''}`, import.meta.url);
     const pending = import(url.href).then(({default: data}) => new Map(data.chapters.flatMap(chapter =>
       chapter.lessons.map(entry => [entry.id, entry])))).catch(error => {
@@ -937,7 +937,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=9', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=10', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson, renderTermPractice}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),
@@ -946,7 +946,8 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
       const entry = lessons.get(summary.id);
       if (!entry) throw new Error('volume entry unavailable');
       if (practiceOnly) {
-        renderTermPractice(main, { entry, learning, taskId });
+        drawing = renderTermPractice(main, { entry, learning, taskId,
+          initialStep: view?.flowStep, onStep: flowStep => learning.saveView(route, { flowStep }) });
         if (retries) main.focus({preventScroll: true});
         document.title = entry.title + ' · 地理实验台';
         return;

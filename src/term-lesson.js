@@ -3,7 +3,8 @@ import { mountTermDiagram } from './term-diagram.js?v=3';
 import { termMarkPlan, renderTermMarkPractice, bindTermMarkPractice } from './term-practice-evidence.js?v=2';
 import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=3';
 import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=1';
-import { assessmentState, paintAssessment } from './assessment.js?v=1';
+import { assessmentState, paintAssessment } from './assessment.js?v=2';
+import { profileCourseTasks } from './profile-assessment.js?v=1';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
@@ -55,14 +56,41 @@ function alignTermBoard(host, control, feedback) {
 }
 
 function bindReview(root, review, taskId, learning, restored, remember) {
-  const info = root.querySelector('[data-term-review]');
-  if (!info) return;
+  const info = root.querySelector(`[data-term-review][data-task-id="${taskId}"]`);
   const options = [...info.querySelectorAll('[data-term-answer]')];
-  const feedback = info.querySelector('[role=status]');
+  const feedback = info.querySelector('[data-review-feedback]');
   let record = learning.state.answers[taskId];
   if (!record && Number.isInteger(restored) && review.options[restored]) {
     learning.setRecord('answers', taskId, { option: restored, solved: restored === review.answer });
     record = learning.state.answers[taskId];
+  }
+  const figure = info.querySelector('figure');
+  const submit = info.querySelector('[data-profile-pair-submit]');
+  const reset = info.querySelector('[data-profile-pair-reset]');
+  const hint = info.querySelector('[data-profile-pair-hint]');
+  const guidance = info.querySelector('[data-profile-pair-selection]');
+  const keys = [...(figure?.querySelectorAll('[data-key]') || [])];
+  let picks = review.pairs?.[record?.option]?.slice() || [];
+  let diagram;
+  function paintPicks() {
+    diagram?.select(picks, false);
+    keys.forEach((key, index) => {
+      key.classList.toggle('mark-selected', picks.includes(index));
+      key.setAttribute('aria-pressed', String(picks.includes(index)));
+    });
+    if (submit) {
+      const accepted = record?.option === review.answer && review.pairs[review.answer].every(point => picks.includes(point));
+      submit.disabled = picks.length < 2;
+      submit.classList.toggle('primary', !accepted);
+      reset.hidden = !picks.length;
+    }
+    if (guidance) guidance.textContent = picks.length ? '已选 ' + picks.map(marker).join('、') : '';
+  }
+  function check(index, button) {
+    record = learning.answerTask(taskId, index, index === review.answer);
+    remember?.(index);
+    paint();
+    alignTermBoard(info, button, feedback);
   }
   function paint() {
     const selected = record?.option ?? null;
@@ -73,19 +101,40 @@ function bindReview(root, review, taskId, learning, restored, remember) {
     feedback.textContent = selected === null ? '' :
       (correct ? '这条依据能说得通。' : '再用材料核对。') + review.options[selected][1];
     info.dataset.result = selected === null ? '' : correct ? 'correct' : 'retry';
+    feedback.dataset.result = info.dataset.result;
     paintAssessment(info, assessmentState(record, review.answer));
   }
   for (const button of options) {
-    button.addEventListener('click', () => {
-      const index = Number(button.dataset.termAnswer);
-      const correct = index === review.answer;
-      record = learning.answerTask(taskId, index, correct);
-      remember?.(index);
-      paint();
-      alignTermBoard(info, button, feedback);
-    });
+    button.addEventListener('click', () => check(Number(button.dataset.termAnswer), button));
   }
+  function choose(index) {
+    picks = picks.includes(index) ? picks.filter(item => item !== index) : submit ? [...picks.slice(-1), index] : [index];
+    paintPicks();
+  }
+  if (figure) {
+    diagram = mountTermDiagram(figure, review.figure, choose);
+    keys.forEach((key, index) => key.addEventListener('click', () => choose(index)));
+  }
+  submit?.addEventListener('click', () => {
+    const ordered = [...picks].sort((a, b) => a - b);
+    const candidate = review.pairs.findIndex(pair => pair.every((point, i) => ordered[i] === point));
+    if (candidate >= 0) {
+      if (hint?.open) learning.hintTask(taskId);
+      check(candidate, submit);
+      paintPicks();
+    }
+  });
+  reset?.addEventListener('click', () => {
+    picks = [];
+    paintPicks();
+    keys[0]?.focus({preventScroll:true});
+  });
+  hint?.addEventListener('toggle', () => {
+    if (hint.open) learning.hintTask(taskId);
+  });
   paint();
+  paintPicks();
+  return () => diagram?.dispose();
 }
 
 function projectMarkup(entry, saved) {
@@ -133,7 +182,6 @@ function compareProfilePoints(activity, picks) {
 }
 
 function profilePracticeMarkup(practice) {
-  if (!practice) return '';
   return `<section class="term-fold term-profile-scope" data-profile-scope aria-labelledby="profile-scope-title">
     <h2 id="profile-scope-title" tabindex="-1">${escape(practice.scope.prompt)}</h2>
     <div class="term-choices" role="group" aria-labelledby="profile-scope-title">
@@ -141,126 +189,55 @@ function profilePracticeMarkup(practice) {
     </div>
     <p class="term-feedback" data-scope-feedback role="status"></p>
     <button type="button" class="button" data-profile-source hidden>看看剖面两端 →</button>
-    <button type="button" class="button primary" data-profile-next hidden>换个剖面找反例 →</button>
-  </section>
-  <details class="term-fold term-profile-transfer" data-profile-transfer data-inquiry-section="profile-transfer" data-remember="profile-transfer">
-    <summary>换个剖面找反例</summary>
-    <h2 tabindex="-1">${escape(practice.transfer.prompt)}</h2>
-    <figure class="term-figure">
-      ${plotMarkup(practice.transfer)}
-      <figcaption>${escape(practice.transfer.caption)}</figcaption>
-    </figure>
-    <div class="term-profile-actions">
-      <button type="button" class="button" data-transfer-hint>给一点提示</button>
-      <button type="button" class="button" data-transfer-reset hidden>清空重选</button>
-    </div>
-    <p class="term-feedback" data-transfer-feedback role="status"></p>
-  </details>`;
+  </section>`;
 }
 
 function bindProfilePractice(root, config, practice, save, recheck) {
-  if (!config) return () => {};
+  if (!config) return;
   const scope = root.querySelector('[data-profile-scope]');
   const options = [...scope.querySelectorAll('[data-scope-choice]')];
   const feedback = scope.querySelector('[data-scope-feedback]');
   const source = scope.querySelector('[data-profile-source]');
-  const next = scope.querySelector('[data-profile-next]');
-  const transfer = root.querySelector('[data-profile-transfer]');
-  const figure = transfer.querySelector('figure');
-  const keys = [...figure.querySelectorAll('[data-key]')];
-  const result = transfer.querySelector('[data-transfer-feedback]');
-  const hint = transfer.querySelector('[data-transfer-hint]');
-  const reset = transfer.querySelector('[data-transfer-reset]');
-  let picks = Array.isArray(practice.transferPicks) ? [...new Set(practice.transferPicks)]
-    .filter(index => Number.isInteger(index) && config.transfer.values[index]).slice(0, 2) : [];
-  let diagram;
-
-  function paintScope() {
+  function paint() {
     const selected = Number.isInteger(practice.scopeChoice) ? options[practice.scopeChoice] : null;
     const correct = selected && practice.scopeChoice === config.scope.answer;
     options.forEach(button => button.setAttribute('aria-pressed', String(button === selected)));
     feedback.textContent = selected ? (correct ? '找对了。' : '再看看。') + config.scope.options[practice.scopeChoice][1] : '';
     scope.dataset.result = selected ? (correct ? 'correct' : 'retry') : '';
     source.hidden = !selected || correct;
-    next.hidden = !correct;
+    paintAssessment(scope, !selected ? 'unchecked' : correct ? 'guided' : 'retry');
   }
   for (const option of options) {
     option.addEventListener('click', () => {
       practice.scopeChoice = Number(option.dataset.scopeChoice);
       save();
-      paintScope();
+      paint();
     });
   }
   source.addEventListener('click', recheck);
-  next.addEventListener('click', () => {
-    transfer.open = true;
-    transfer.querySelector('h2').focus();
-  });
-
-  function paintTransfer() {
-    diagram?.select(picks, false);
-    keys.forEach((key, index) => {
-      key.classList.toggle('mark-selected', picks.includes(index));
-      key.setAttribute('aria-pressed', String(picks.includes(index)));
-    });
-    reset.hidden = picks.length === 0;
-    hint.hidden = Boolean(practice.transferResult);
-    if (picks.length < 2) {
-      result.dataset.result = '';
-      result.textContent = practice.transferHint ? '提示：找一段往右走、线却往上走的坡。' :
-        picks.length ? '已选 ' + marker(picks[0]) + '，再选一处。' : '';
-      return;
-    }
-    const {line, change} = compareProfilePoints(config.transfer, picks);
-    result.dataset.result = change > 0 ? 'correct' : 'retry';
-    result.textContent = line + (change > 0
-      ? '这两个点找到了反例。' + (practice.transferResult === 'independent' ? '这一次独立找到了。' : '这一次通过提示或重试找到了。')
-      : '这组点还找不到反例。看看哪一段往右走，海拔却升高。');
-  }
-  function pick(index) {
-    picks = picks.includes(index) ? picks.filter(item => item !== index) : [...picks.slice(-1), index];
-    if (picks.length === 2) {
-      const {change} = compareProfilePoints(config.transfer, picks);
-      if (change > 0) practice.transferResult ||= practice.transferHint ? 'guided' : 'independent';
-      else practice.transferHint = true;
-    }
-    practice.transferPicks = picks;
-    save();
-    paintTransfer();
-  }
-  hint.addEventListener('click', () => {
-    practice.transferHint = true;
-    if (picks.length === 2 && !practice.transferResult) {
-      picks = [];
-      practice.transferPicks = picks;
-    }
-    save();
-    paintTransfer();
-  });
-  reset.addEventListener('click', () => {
-    picks = [];
-    practice.transferPicks = picks;
-    save();
-    paintTransfer();
-    keys[0]?.focus();
-  });
-  keys.forEach((key, index) => key.addEventListener('click', () => pick(index)));
-  diagram = mountTermDiagram(figure, config.transfer, pick);
-  paintScope();
-  paintTransfer();
-  return () => diagram?.dispose();
+  paint();
 }
 
 function reviewMarkup(review) {
-  return `<section class="term-review" data-term-review data-task-id="${escape(review.id)}" data-inquiry-section="term-review">
-      <h3 class="geo-review-prompt" tabindex="-1">${escape(review.prompt)}</h3>
-      ${review.evidence ? renderComparison(review.evidence) : ''}
-      <div class="term-choices" role="group" aria-label="选择材料支持的解释">
-        ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
-      </div>
-      <p class="term-feedback" role="status"></p>
-      <p class="geo-assessment-label" data-assessment-label></p>
-    </section>`;
+  const figure = review.figure ? `<figure class="term-figure">
+    ${plotMarkup(review.figure)}<figcaption>${escape(review.figure.caption)}</figcaption></figure>` : '';
+  const selection = review.pairs ? `<div class="term-profile-actions">
+      <button type="button" class="button primary" data-profile-pair-submit disabled>核对我选的两处</button>
+      <button type="button" class="button" data-profile-pair-reset hidden>清空重选</button>
+    </div><details class="geo-material-fold" data-profile-pair-hint>
+      <summary>给一点读图提示</summary><p>${escape(review.hint)}</p></details>` :
+    `<div class="term-choices" role="group" aria-label="选择材料支持的解释">
+      ${review.options.map(([label], i) => `<button type="button" class="button" data-term-answer="${i}" aria-pressed="false">${escape(label)}</button>`).join('')}
+    </div>`;
+  return `<section class="term-review${figure ? ' term-review-visual' : ''}" data-term-review data-task-id="${escape(review.id)}">
+    <h3 class="geo-review-prompt" tabindex="-1">${escape(review.prompt)}</h3>
+    ${review.evidence ? renderComparison(review.evidence) : ''}
+    <div class="term-review-body">${figure}<div class="term-review-controls">${selection}
+      ${figure ? '<p class="term-review-selection" aria-live="polite" data-profile-pair-selection></p>' : ''}
+      <p class="term-feedback" role="status" data-review-feedback></p>
+      <p class="geo-assessment-label" data-assessment-label></p></div>
+    </div>
+  </section>`;
 }
 
 function termReviewTask(entry, taskId) {
@@ -270,16 +247,24 @@ function termReviewTask(entry, taskId) {
   return { ...transfer, options: transfer.options.map(({label, feedback}) => [label, feedback]) };
 }
 
-export function renderTermPractice(root, { entry, learning, taskId }) {
-  const review = termReviewTask(entry, taskId);
-  const legacy = review.id === 'review-' + entry.id;
-  const restored = legacy ? learning.state.widgets[entry.id]?.reviewPick : undefined;
-  root.innerHTML = `<article class="geo-lesson geo-extra-learning geo-single-practice">
-    <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>
-    ${reviewMarkup(review)}
-  </article>`;
-  bindReview(root, review, review.id, learning, restored, legacy ? reviewPick =>
-    learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}) : undefined);
+export function renderTermPractice(root, { entry, learning, taskId, initialStep, onStep }) {
+  const profile = profileCourseTasks(entry);
+  const match = profile.find(task => task.id === taskId);
+  const tasks = match ? [match] : profile.length && !taskId ? profile : [termReviewTask(entry, taskId)];
+  const flow = tasks.length > 1 ? lessonFlow(tasks.map((task, index) => ({
+    id: 'practice-' + index, label: ['找局部反例', '判断趋势和局部'][index], content: reviewMarkup(task),
+    next: index === 0 ? '换个剖面判断' : '',
+  })), '练习进度') : reviewMarkup(tasks[0]);
+  root.innerHTML = `<article class="geo-lesson geo-extra-learning${tasks.length === 1 ? ' geo-single-practice' : ''}">
+    <header class="term-intro"><p class="term-bookname">按课练习</p><h1>${escape(entry.title)}</h1></header>${flow}</article>`;
+  if (tasks.length > 1) bindLessonFlow(root, initialStep, onStep);
+  const cleanups = tasks.map(review => {
+    const legacy = review.id === 'review-' + entry.id;
+    const restored = legacy ? learning.state.widgets[entry.id]?.reviewPick : undefined;
+    return bindReview(root, review, review.id, learning, restored, legacy ? reviewPick =>
+      learning.setRecord('widgets', entry.id, {...learning.state.widgets[entry.id], reviewPick}) : undefined);
+  });
+  return () => cleanups.forEach(cleanup => cleanup());
 }
 
 export function renderTermLesson(root, { entry, term, next, related, learning, initialStep, onStep, onGlobe, onPhotos }) {
@@ -296,11 +281,16 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   const lessonPage = entry.page ? '课本第 ' + entry.page + ' 页起' : '纸书里的位置';
   const follow = next ? '#/lesson/' + next.id : '#/term/' + term.id;
   const canGlobe = typeof onGlobe === 'function';
-  const practiceReview = termReviewTask(entry);
+  const profileReviews = profileCourseTasks(entry);
+  const practiceReview = profileReviews[0] || termReviewTask(entry);
   const legacyReview = practiceReview.id === 'review-' + entry.id;
   const choices = activity.choices.map(item => item.label);
   const opening = `<div class="geo-opening"><h3>${escape(entry.question)}</h3>
-    ${renderPrediction(choices, activity.prompt)}</div>`;
+    ${profilePractice ? `<figure class="term-figure term-opening-profile" data-profile-opening>
+      <div class="term-plot"><canvas width="360" height="140" role="img" aria-label="从西向东的剖面左半段，已测的三处地势依次降低。"></canvas></div>
+      <figcaption>这里只露出了剖面左半段。被挡住的右半段，也会一直向下吗？</figcaption>
+    </figure>` : ''}
+    ${renderPrediction(choices, profilePractice ? '先猜一猜，接下来会怎样？' : activity.prompt)}</div>`;
   const observation = `<section class="term-station" data-activity-kind="${activity.kind}" data-inquiry-section="term-observation"${profilePractice ? ' data-profile-practice' : ''}>
       <p class="geo-observation-aim" data-opening-observation></p>
       <div class="term-board-tools">
@@ -356,12 +346,17 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
       { id: 'term-observation', label: '看图找线索', content: observation, next: profilePractice ? '用剖面作判断' : '记住读图方法' },
       ...(profilePractice ? [{ id: 'profile', label: '用剖面作判断', content: profilePracticeMarkup(profilePractice), next: '记住读图方法' }] : []),
       { id: 'method', label: '记住读图方法', content: methodSummary(alignedMethod(entry.id, entry.takeaway)), next: '换份材料复习' },
-      { id: 'term-review', label: '换份材料复习', content: review, next: '回顾这节课' },
+      { id: 'term-review', label: profilePractice ? '换个剖面找反例' : '换份材料复习', content: review,
+        next: profilePractice ? '再判一次整体与局部' : '回顾这节课' },
+      ...profileReviews.slice(1).map(task => ({ id: 'term-apply', label: '独立判读新图', content: reviewMarkup(task), next: '回顾这节课' })),
       { id: 'recap', label: '回顾这节课', content: recap },
     ])}
   </article>`;
 
-  const flow = bindLessonFlow(root, initialStep === 'profile-transfer' ? 'profile' : initialStep, onStep);
+  const flow = bindLessonFlow(root, initialStep === 'profile-transfer' ? 'term-review' : initialStep, onStep);
+  const openingProfile = root.querySelector('[data-profile-opening]');
+  const openingDiagram = openingProfile ? mountTermDiagram(openingProfile,
+    { ...activity, values: activity.values.slice(0, 3), flows: [] }, () => {}) : null;
   const host = root.querySelector('.term-station');
   const figure = host.querySelector('figure');
   const panel = host.querySelector('[data-term-feedback]');
@@ -580,7 +575,7 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     },
   });
   paintComparison();
-  const disposeProfilePractice = bindProfilePractice(root, profilePractice, practice, save, () => {
+  bindProfilePractice(root, profilePractice, practice, save, () => {
     practice.viewingEnds = true;
     picks = [0, records.length - 1];
     setComparing(true);
@@ -589,10 +584,11 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
     title.focus();
     alignTermBoard(host, title, compareResult);
   });
-  bindReview(root, practiceReview, practiceReview.id, learning, legacyReview ? reviewPick : undefined, legacyReview ? value => {
+  const disposeReview = bindReview(root, practiceReview, practiceReview.id, learning, legacyReview ? reviewPick : undefined, legacyReview ? value => {
     reviewPick = value;
     save();
   } : undefined);
+  const disposeApplication = profileReviews[1] ? bindReview(root, profileReviews[1], profileReviews[1].id, learning) : null;
   projectBinding(root, entry, learning);
 
   const globe = root.querySelector('[data-term-globe]');
@@ -615,5 +611,5 @@ export function renderTermLesson(root, { entry, term, next, related, learning, i
   if (photoPanel) photoPanel.addEventListener('toggle', () => {
     if (photoPanel.open && !photoRunner) photoRunner = onPhotos(photoPanel.querySelector('[data-term-gallery]'));
   });
-  return () => { diagram?.dispose(); disposeProfilePractice(); globeRunner?.(); photoRunner?.(); };
+  return () => { diagram?.dispose(); openingDiagram?.dispose(); disposeReview(); disposeApplication?.(); globeRunner?.(); photoRunner?.(); };
 }

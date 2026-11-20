@@ -3,6 +3,7 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { topicViews } from '../src/topic-views.js';
+import { profileCourseTasks } from '../src/profile-assessment.js';
 
 const require = createRequire(import.meta.url);
 const { build } = require(resolve(dirname(realpathSync(process.argv[2])), '..'));
@@ -13,6 +14,7 @@ const volumeIndex = Object.fromEntries(await Promise.all(volumeIds.map(async id 
   return [id, book.chapters.map(chapter => ({title: chapter.title, lessons: chapter.lessons.map(lesson => ({
     id: lesson.id, title: lesson.title, page: lesson.page, project: Boolean(lesson.project),
     optionCount: lesson.review.options.length, answer: lesson.review.answer,
+    checks: profileCourseTasks(lesson).map(task => ({ id: task.id, prompt: task.prompt, answer: task.answer, optionCount: task.options.length })),
   }))}))];
 })));
 

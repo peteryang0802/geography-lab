@@ -285,6 +285,17 @@
 }
 .geo-assessment-label { margin: 8px 0 0; color: var(--muted); font-size: .89rem; }
 [data-assessment="retry"] .geo-assessment-label { color: var(--geo-retry-ink); }
+.term-review-visual .term-review-body { display: grid; gap: 14px; }
+.term-review-visual .term-figure { margin: 0; min-width: 0; }
+.term-review-visual .term-choices { flex-direction: column; align-items: stretch; }
+.term-review-visual .term-choices button { height: auto; min-height: 44px; text-align: left; }
+.term-review-selection { margin-top: 7px; color: var(--muted); }
+.term-review-selection:empty { display: none; }
+.term-opening-profile { margin: 10px 0; max-width: 410px; }
+.term-opening-profile .term-plot { height: 134px; }
+@media (min-width: 900px) {
+  .term-review-visual .term-review-body { grid-template-columns: minmax(0, 1.4fr) minmax(245px, 1fr); align-items: start; }
+}
 /* Leave navigation available while the current exercise has the visual priority. */
 .geo-step:has(> .geo-step-body :is(.button.primary, [data-rain-test][aria-pressed="false"], [data-rain-test][aria-pressed="true"] + [data-rain-drain][aria-pressed="false"]):not(:disabled, [hidden], [hidden] *, details:not([open]) *, .next-lesson)) .geo-step-next,
 .geo-step:has([data-geo-prediction]):not(:has([data-geo-pick][aria-pressed="true"])) .geo-step-next,

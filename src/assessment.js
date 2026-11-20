@@ -19,7 +19,7 @@ export function paintAssessment(element, status) {
   const label = element.querySelector('[data-assessment-label]');
   if (label) label.textContent = assessmentLabels[status];
   const step = element.closest('[data-geo-step]');
-  if (['lesson-practice-transfer', 'term-review'].includes(step?.dataset.geoStep)) {
+  if (step?.nextElementSibling?.dataset.geoStep === 'recap') {
     const summary = step.closest('[data-geo-flow]')?.querySelector('[data-assessment-summary]');
     if (summary) summary.textContent = '课末核对 · ' + assessmentLabels[status];
   }

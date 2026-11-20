@@ -117,10 +117,19 @@ async function check(engine, name, viewport) {
         if (name !== 'desktop' && (display.top < -1 || display.bottom > display.height + 1)) tallBoards.push([entry.id, display]);
         if (index === 0) await screenshot(book + '-station');
         await moveTo(lesson, 'term-review');
-        const review = lesson.locator('[data-term-review]');
+        const review = lesson.locator('[data-term-review]:visible');
+        if (entry.profilePractice) {
+          const points = review.locator('[data-key]');
+          await points.nth(1).click();
+          await points.nth(2).click();
+          await review.locator('[data-profile-pair-submit]').click();
+          assert.equal(await review.getAttribute('data-result'), 'correct');
+          await moveTo(lesson, 'term-apply');
+        }
         const transfer = alignedTransfer(entry.id);
-        const answer = transfer?.answer ?? entry.review.answer;
-        const options = transfer?.options ?? entry.review.options;
+        const check = entry.profilePractice?.application || entry.review;
+        const answer = transfer?.answer ?? check.answer;
+        const options = transfer?.options ?? check.options;
         await review.locator('[data-term-answer]').nth((answer + 1) % options.length).click();
         assert.equal(await review.getAttribute('data-result'), 'retry');
         await review.locator('[data-term-answer]').nth(answer).click();

@@ -1,0 +1,86 @@
+const assert = require('node:assert/strict');
+const { chromium } = require(process.env.GEOLAB_PLAYWRIGHT || 'playwright');
+const { moveTo } = require('./lesson-flow.cjs');
+const base = process.env.GEOLAB_URL || 'http://127.0.0.1:8773/';
+const route = '#/lesson/8a-relief';
+
+(async () => {
+  const browser = await chromium.launch(process.env.GEOLAB_CHROME ? {executablePath: process.env.GEOLAB_CHROME} : {});
+  try {
+    const page = await browser.newPage({viewport: {width: 1280, height: 720}, reducedMotion: 'reduce'});
+    const course = page.locator('[data-extended-lesson="8a-relief"]');
+    const next = course.locator('[data-geo-step]:visible [data-geo-next]');
+    const currentReview = page.locator('[data-term-review]:visible');
+    const summary = course.locator('[data-assessment-summary]');
+    await page.goto(base + route);
+    await course.locator('[data-profile-opening] canvas').waitFor();
+    if (process.env.GEOLAB_SCREENSHOTS) await page.screenshot({path: process.env.GEOLAB_SCREENSHOTS + '/geography-profile-opening.png'});
+
+    await moveTo(course, 'term-observation');
+    await course.locator('[data-term-choice="0"]').click();
+    await course.locator('[data-term-see]').click();
+    await course.locator('[data-profile-find]').click();
+    const plot = course.locator('.term-station [data-key]');
+    await plot.nth(0).click();
+    await plot.nth(5).click();
+    assert.match(await course.locator('[data-term-compare-result]').innerText(), /降低 4330 米/);
+    await course.locator('[data-term-compare-reset]').click();
+    await plot.nth(3).click();
+    await plot.nth(4).click();
+    assert.match(await course.locator('[data-term-compare-result]').innerText(), /升高 200 米/);
+    await course.locator('[data-profile-conclude]').click();
+    await course.locator('[data-scope-choice="1"]').click();
+    await moveTo(course, 'term-review');
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'unchecked');
+    const firstPair = currentReview.locator('[data-plot-point]');
+    const submit = currentReview.locator('[data-profile-pair-submit]');
+    assert.equal(await submit.isDisabled(), true);
+    await firstPair.nth(0).click();
+    assert.equal(await submit.isDisabled(), true);
+    await firstPair.nth(1).click();
+    await submit.click();
+    assert.match(await currentReview.locator('[data-review-feedback]').innerText(), /降低 780 米/);
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'retry');
+    assert.match(await next.innerText(), /先留待重试/);
+    const hint = currentReview.locator('[data-profile-pair-hint]');
+    await hint.locator('summary').click();
+    assert.doesNotMatch(await hint.locator('p').innerText(), /[ABCD0-9]|小丘|河谷/);
+    await hint.locator('summary').click();
+    const boxes = await currentReview.evaluate(element => {
+      const [diagram, feedback] = [...element.querySelectorAll('canvas, [data-review-feedback]')]
+        .map(child => child.getBoundingClientRect());
+      return {left:diagram.left, right:diagram.right, feedbackX:feedback.left, top:diagram.top, bottom:feedback.bottom};
+    });
+    assert.ok(boxes.top >= 0 && boxes.bottom <= 720 && boxes.right < boxes.feedbackX, JSON.stringify(boxes));
+    if (process.env.GEOLAB_SCREENSHOTS) await page.screenshot({path: process.env.GEOLAB_SCREENSHOTS + '/geography-profile-retry.png'});
+
+    await page.goto(base + '#/review');
+    await page.locator('a[href$="?task=course-profile-pair-8a-relief"]').click();
+    assert.equal(await currentReview.locator('[data-plot-point][aria-pressed="true"]').count(), 2);
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'retry');
+    await currentReview.locator('[data-profile-pair-reset]').click();
+    await firstPair.nth(1).click();
+    await firstPair.nth(2).click();
+    await submit.click();
+    assert.match(await currentReview.locator('[data-review-feedback]').innerText(), /升高 150 米/);
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'guided');
+
+    await page.goto(base + route);
+    await moveTo(course, 'term-apply');
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'unchecked');
+    assert.match(await currentReview.locator('figure').innerText(), /2230 米/);
+    assert.doesNotMatch(await currentReview.locator('figure').innerText(), /1120 米/);
+    await currentReview.locator('[data-term-answer="0"]').click();
+    assert.equal(await currentReview.getAttribute('data-assessment'), 'independent');
+    if (process.env.GEOLAB_SCREENSHOTS) await page.screenshot({path: process.env.GEOLAB_SCREENSHOTS + '/geography-profile-transfer.png'});
+    await next.click();
+    assert.match(await summary.innerText(), /首次独立完成/);
+    await page.reload();
+    await summary.waitFor();
+    assert.match(await summary.innerText(), /首次独立完成/);
+    console.log('PASS 1280×720 profile opening, evidence, guided new profile, and independent new judgment');
+  } finally { await browser.close(); }
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
