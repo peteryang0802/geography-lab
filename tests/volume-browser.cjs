@@ -163,11 +163,13 @@ async function check(engine, name, viewport) {
     await page.reload();
     await water.waitFor();
     assert.equal(await compare.getAttribute('aria-expanded'), 'true');
-    assert.equal(await compare.innerText(), '回到猜想');
+    assert.equal(await compare.innerText(), '回到取证小题');
     assert.match(await compareResult.innerText(), /相差 18 单位/);
     await water.locator('[data-term-compare-reset]').click();
     assert.equal(await water.locator('[data-bar][aria-pressed="true"]').count(), 0);
     await compare.click();
+    assert.equal(await water.locator('[data-term-proof]').isVisible(), true);
+    await water.locator('[data-term-proof-back]').click();
     assert.ok(await water.locator('[data-term-see]').isVisible());
     await page.locator('[data-nav=home]').click();
     const waterEntry = page.locator('[data-volume-entry="8a-water"]');
