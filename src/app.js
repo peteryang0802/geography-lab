@@ -18,7 +18,7 @@ import { lessonReadingPractice, renderReadingPractice, bindReadingPractice } fro
 import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=4';
 import { alignedPractice, alignedTransfer } from './lesson-practice-transfer.js?v=2';
 import { mountParentSettings } from './parent-settings.js';
-import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=1';
+import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=2';
 
 const main = document.querySelector('#content');
 mountDeferredPhotos(main);
@@ -950,7 +950,7 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
     main.innerHTML = `<section class="volume-heading">
       <h1>${escape(summary.title)}</h1><p role="status">正在准备这节课的地图和记录……</p></section>`;
     try {
-      const renderer = new URL('./term-lesson.js?v=11', import.meta.url);
+      const renderer = new URL('./term-lesson.js?v=12', import.meta.url);
       if (retries) renderer.searchParams.set('retry', retries);
       const [lessons, {renderTermLesson, renderTermPractice}] = await Promise.all([
         loadVolume(summary.term), import(renderer.href),

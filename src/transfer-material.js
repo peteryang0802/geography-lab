@@ -1,14 +1,14 @@
 import { COAST_RINGS } from './geo-model.js';
-import { transferMaterials } from './transfer-material-data.js';
+import { transferMaterials } from './transfer-material-data.js?v=2';
 
 const escape = value => String(value).replace(/[&<>"']/g, character =>
   ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[character]);
 
 const maps = {
   'land-ocean': {
-    frame: [-12, 160, 15, -47],
-    route: [[40, -17], [62, -21], [84, -23], [104, -24], [114, -25]],
-    labels: [['非洲', 23, 1], ['澳大利亚', 133, -31], ['大西洋', 5, -31], ['印度洋', 80, -34], ['太平洋', 147, -11]],
+    frame: [-12, 166, 15, -47],
+    route: [[40, -17], [43, -22], [43, -27], [56, -29], [84, -28], [105, -27], [114, -25]],
+    labels: [['非洲', 23, 1], ['澳大利亚', 133, -31], ['大西洋', 5, -31], ['印度洋', 80, -36], ['太平洋', 155, -16]],
   },
   '7b-africa': {
     frame: [-9, 57, 29, -35],

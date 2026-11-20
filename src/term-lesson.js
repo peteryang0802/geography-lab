@@ -5,7 +5,7 @@ import { bindLessonFlow, lessonFlow } from './lesson-flow.js?v=4';
 import { alignedMethod, alignedTransfer } from './lesson-practice-transfer.js?v=2';
 import { assessmentState, paintAssessment } from './assessment.js?v=3';
 import { profileCourseTasks } from './profile-assessment.js?v=1';
-import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=1';
+import { renderTransferMaterial, mountTransferMaps } from './transfer-material.js?v=2';
 
 const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const marker = index => labels[index] || (index + 1);
