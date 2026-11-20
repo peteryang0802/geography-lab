@@ -26,6 +26,8 @@ const viewId = selectInquiryView(location.search);
 const inquiryView = inquiryViews[viewId];
 document.documentElement.dataset.inquiryView = viewId;
 const notice = document.querySelector('#announcement');
+const contourChallengeKey = 'contours-challenge';
+const contourChallengeRoute = '#/challenge/contours';
 const work = [...lessons, ...projects];
 const allLessons = [...work, ...extendedEntries];
 const byLesson = new Map(work.map(lesson => [lesson.id, lesson]));
@@ -55,7 +57,7 @@ let renderVersion = 0;
 let resettingLearning = false;
 const learning = createLearningStore({
   lessons: allLessons.map(lesson => ({ ...lesson, tasks: tasksByLesson.get(lesson.id) })), concepts, labs,
-  activityIds: [...activityIds, ...work.flatMap(lesson => ['-reading-practice', '-opening-guess'].map(kind => lesson.id + kind))],
+  activityIds: [contourChallengeKey, ...activityIds, ...work.flatMap(lesson => ['-reading-practice', '-opening-guess'].map(kind => lesson.id + kind))],
   namespace: viewId === 'recall' ? '' : viewId,
   onStorageError: () => {
     notice.textContent = '当前浏览器无法长期保存进度，请在复习页导出。';
@@ -274,6 +276,8 @@ function showLesson(lesson, storedView) {
   const plan = lessonReadingPractice(lesson, data);
   const tasks = activeTasks(lesson);
   const route = activeHash;
+  const challengeHref = route === lessonUrl(lesson.id) ? contourChallengeRoute :
+    contourChallengeRoute + '?from=' + encodeURIComponent(route);
   const practices = [renderReadingPractice(plan, state.activities[proofKey]), ...tasks.map((task, index) => taskHtml(task, index, true, index === 1 ? lesson.id : undefined))];
   main.innerHTML = renderInquiry({
     entry: position.entry, textbook: textbookLabel(position.entry), data, viewId,
@@ -282,7 +286,8 @@ function showLesson(lesson, storedView) {
     practices,
     transferMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'transfer')),
     outsideMarkup: activityMarkup(lesson, activities.filter(activity => activity.placement === 'outside')),
-    footer: lessonNavigation(position), note: lessonNote(lesson, data),
+    footer: (lesson.id === 'contours' ? `<p class="contour-challenge-entry"><a class="button" data-contour-challenge-entry href="${escape(challengeHref)}">闯一关 · 等高线与路线选择</a></p>` : '') + lessonNavigation(position),
+    note: lessonNote(lesson, data),
   });
   learning.recordVisit(lesson.id);
   const flow = bindLessonFlow(main, storedView?.flowStep ?? storedView?.section, flowStep => learning.saveView(route, { flowStep }));
@@ -482,6 +487,11 @@ function renderNavigation(page, id, query, lessonTerm) {
   } else if (page === 'term' || page === 'textbook') back = { href: '#/', label: '四册目录' };
   else if (page === 'concept') back = contextReturn(query.get('from'));
   else if (page === 'practice') back = { href: '#/review', label: '返回复习' };
+  else if (page === 'challenge' && id === 'contours') {
+    const origin = acceptedOrigin(query.get('from'));
+    const href = origin?.split('?')[0] === lessonUrl(id) ? origin : lessonUrl(id);
+    back = { href, label: '返回《地形图的判读》' };
+  }
   else if (page === 'legend') {
     const term = volumeById.get(query.get('term'))?.id ?? '7a';
     back = { href: termUrl(term), label: '本册目录' };
@@ -887,6 +897,7 @@ function sources() {
 function captureView() {
   if (!activeHash || resettingLearning) return;
   const { page, id } = routeParts(activeHash);
+  if (page === 'challenge') return;
   const details = Array.from(main.querySelectorAll('details[data-remember]'), element => [element.dataset.remember, element.open]);
   const nearest = page === 'lesson' && Array.from(main.querySelectorAll('[data-inquiry-section]'))
     .find(element => !element.parentElement.closest('[hidden], details:not([open])') && element.getBoundingClientRect().bottom > 36);
@@ -1019,6 +1030,47 @@ function showExpandedLesson(summary, route, previous, view, version, practiceOnl
   cleanup = () => { drawing?.(); };
 }
 
+function showContourChallenge(version) {
+  let dispose;
+  let retries = 0;
+  const currentReset = () => {
+    try { return localStorage.getItem('school-parent:reset:geography'); } catch { return null; }
+  };
+  let resetStamp = currentReset();
+  async function open() {
+    main.innerHTML = pageIntro('等高线与路线选择', '正在准备闯关地图……');
+    try {
+      const url = new URL('./contour-challenge.js?v=1', import.meta.url);
+      if (retries) url.searchParams.set('retry', retries);
+      const { mountContourChallenge } = await import(url.href);
+      if (renderVersion !== version) return;
+      dispose = mountContourChallenge(main, {
+        read: () => {
+          learning.refresh();
+          return state.activities[contourChallengeKey];
+        },
+        save: record => {
+          const nextStamp = currentReset();
+          if (resettingLearning || nextStamp?.startsWith('pending:')) return false;
+          if (nextStamp !== resetStamp && !nextStamp?.startsWith('failed:')) return false;
+          resetStamp = nextStamp;
+          return learning.setRecord('activities', contourChallengeKey, record);
+        },
+      });
+    } catch (error) {
+      if (renderVersion !== version) return;
+      console.warn('Contour challenge could not be loaded', error);
+      main.innerHTML = pageIntro('等高线与路线选择', '闯关地图暂时没打开。') + '<button type="button" class="button primary" data-contour-retry>重新加载闯关</button>';
+      main.querySelector('[data-contour-retry]').addEventListener('click', () => {
+        retries++;
+        open();
+      }, { once: true });
+    }
+  }
+  open();
+  cleanup = () => dispose?.();
+}
+
 function render() {
   const next = location.hash.startsWith('#/') ? location.hash : '#/';
   const previous = activeHash;
@@ -1037,7 +1089,7 @@ function render() {
   const priorEntry = termEntryById.get(prior);
   const priorInVolume = volume?.id === '7a' || page === 'textbook' ? getTextbookPosition(prior)?.entry
     : priorEntry?.term === volume?.id ? priorEntry : null;
-  const view = learning.getView(next) ?? (lesson || expanded && page === 'lesson' ? state.positions[id] : null);
+  const view = page === 'challenge' ? null : learning.getView(next) ?? (lesson || expanded && page === 'lesson' ? state.positions[id] : null);
   document.documentElement.dataset.learningRoute = page;
   const lessonTerm = page === 'lesson' && (lesson ? '7a' : expanded?.term);
   renderNavigation(page, id, query, lessonTerm);
@@ -1052,11 +1104,13 @@ function render() {
     showLesson(lesson, view);
     const cameFrom = previous ? routeParts(previous) : null;
     const contextualBack = cameFrom?.page === 'concept' && contextReturn(cameFrom.query.get('from')).href === next
-      || cameFrom?.page === 'lab' && (cameFrom.query.get('returnTo') === next || cameFrom.query.get('from') === id);
+      || cameFrom?.page === 'lab' && (cameFrom.query.get('returnTo') === next || cameFrom.query.get('from') === id)
+      || cameFrom?.page === 'challenge' && id === 'contours' && cameFrom.id === id;
     if (!contextualBack && !courseReturn(query, id)) {
       learning.setResume(id, { route: next, scrollY: view?.scrollY || 0 });
     }
-  } else if (page === 'concept' && byConcept.has(id)) showConcept(byConcept.get(id), query);
+  } else if (next.split('?')[0] === contourChallengeRoute) showContourChallenge(version);
+  else if (page === 'concept' && byConcept.has(id)) showConcept(byConcept.get(id), query);
   else if (page === 'lab' && byLab.has(id)) showLab(byLab.get(id), query, next, view, version);
   else if (page === 'explore') {
     const storedQuery = view?.search;
@@ -1079,6 +1133,13 @@ function render() {
       const current = main.querySelector(`[data-volume-entry="${priorInVolume.id}"]`);
       current?.scrollIntoView({block: 'nearest'});
       current?.focus({preventScroll: true});
+    }
+    if (lesson?.id === 'contours' && previous.split('?')[0] === contourChallengeRoute) {
+      const entry = main.querySelector('[data-contour-challenge-entry]');
+      if (entry && !entry.closest('[hidden]')) {
+        entry.scrollIntoView({ block: 'nearest' });
+        entry.focus({ preventScroll: true });
+      }
     }
   });
 }
