@@ -1067,7 +1067,7 @@ function showContourChallenge(version) {
   async function open() {
     main.innerHTML = pageIntro('等高线与路线选择', '正在准备闯关地图……');
     try {
-      const url = new URL('./contour-challenge.js?v=3', import.meta.url);
+      const url = new URL('./contour-challenge.js?v=4', import.meta.url);
       if (retries) url.searchParams.set('retry', retries);
       const { mountContourChallenge } = await import(url.href);
       if (renderVersion !== version) return;

@@ -1,6 +1,6 @@
 import { earlierRouteQuestion, questions, routeRecheck } from './contour-challenge-questions.js?v=2';
 import { contourRouteEvidence, renderContourMap } from './contour-challenge-map.js?v=2';
-import { createChallengeFeedback } from '../challenge-feedback.js?v=1';
+import { createChallengeFeedback } from '../challenge-feedback.js?v=2';
 
 const shortTime = 30_000;
 const total = questions.length;
