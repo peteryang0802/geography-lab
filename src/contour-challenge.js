@@ -1,5 +1,6 @@
 import { earlierRouteQuestion, questions, routeRecheck } from './contour-challenge-questions.js?v=2';
 import { contourRouteEvidence, renderContourMap } from './contour-challenge-map.js?v=2';
+import { createChallengeFeedback } from '../challenge-feedback.js?v=1';
 
 const shortTime = 30_000;
 const total = questions.length;
@@ -43,10 +44,24 @@ function points(run) {
   }, 0);
 }
 
+function passedMap(attempts, marks, exercise) {
+  return marks.length > 0 && marks.at(-1) === contourRouteEvidence(exercise.diagram).answer
+    && attempts.at(-1) === exercise.answer;
+}
+
+function qualifiesForFlower(run) {
+  if (run?.index !== total || points(run) !== total) return false;
+  const last = run.records.at(-1);
+  if (passedMap(last.variant, last.proof.variant, questions.at(-1).variant)) return true;
+  // An earlier saved run may have completed before the required map recorded its evidence.
+  return run.phase !== 'recheck' && run.recheck && passedMap(run.recheck.attempts, run.recheck.proof, routeRecheck);
+}
+
 const esc = text => String(text).replace(/[&<>"']/g, char =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
 export function mountContourChallenge(root, { read, save }) {
+  const feedback = createChallengeFeedback(root);
   let run = restore(read());
   let showIntro = !run;
   let deadline = null;
@@ -102,7 +117,7 @@ export function mountContourChallenge(root, { read, save }) {
 
   function intro() {
     return `<section class="contour-challenge-screen">
-      <p class="eyebrow">七年级上册 · 地形图的判读</p>
+      ${screenHeader('七年级上册 · 地形图的判读')}
       <h1 tabindex="-1" data-challenge-focus>等高线与路线选择</h1>
       <p class="contour-challenge-hook">两条路都能登顶，一条近、一条缓。你能从等高线里找出证据吗？</p>
       <p>一关 10 题。选项首答正确得 1 分，答错订正后，换题首答正确也能补回这 1 分。最后换图，用图上的证据验证。练习得分和新图验证会分别记录。</p>
@@ -112,7 +127,7 @@ export function mountContourChallenge(root, { read, save }) {
     </section>`;
   }
 
-  function feedback() {
+  function answerFeedback() {
     const exercise = question();
     const last = attempts().at(-1);
     const timedOut = last === undefined && run.phase === 'main' && record().timedOut;
@@ -127,6 +142,16 @@ export function mountContourChallenge(root, { read, save }) {
     </div>`;
   }
 
+  function screenHeader(label, clock = false) {
+    return `<header class="contour-challenge-head">
+      <p class="eyebrow">${label}</p>
+      <div class="contour-challenge-head-actions">
+        ${clock ? '<p data-challenge-clock role="timer" aria-label="剩余时间"></p>' : ''}
+        ${feedback.soundButton()}
+      </div>
+    </header>`;
+  }
+
   function showQuestion() {
     const exercise = question();
     const marking = needsEvidence();
@@ -134,10 +159,7 @@ export function mountContourChallenge(root, { read, save }) {
     const correct = currentCorrect();
     const next = needsVariant() ? '换题试一次' : run.index + 1 === total ? '查看闯关结果' : '下一题';
     return `<section class="contour-challenge-screen">
-      <header class="contour-challenge-head">
-        <p class="eyebrow">等高线与路线选择 · ${rechecking() ? '换新图巩固' : `第 ${run.index + 1} / ${total} 题${run.phase === 'variant' ? ' · 换题' : ''}`}</p>
-        <p data-challenge-clock ${isClocked() ? '' : 'hidden'} role="timer" aria-label="剩余时间"></p>
-      </header>
+      ${screenHeader(`等高线与路线选择 · ${rechecking() ? '换新图巩固' : `第 ${run.index + 1} / ${total} 题${run.phase === 'variant' ? ' · 换题' : ''}`}`, isClocked())}
       <h1 class="contour-challenge-question" tabindex="-1" data-challenge-focus>${esc(exercise.prompt)}</h1>
       <div class="contour-challenge-stage${diagram ? ' has-map' : ''}">
         ${diagram}
@@ -146,7 +168,7 @@ export function mountContourChallenge(root, { read, save }) {
           <div class="contour-challenge-options" ${marking ? 'hidden' : ''} role="group" aria-label="作答选项">
             ${exercise.options.map((option, i) => `<button type="button" data-challenge-option="${i}" aria-pressed="${attempts().at(-1) === i}" ${correct ? 'disabled' : ''}>${esc(option)}</button>`).join('')}
           </div>
-          ${feedback()}
+          ${answerFeedback()}
           ${correct ? `<button type="button" class="button primary" data-challenge-action="next">${rechecking() ? '回看本关结果' : next}</button>` : ''}
         </div>
       </div>
@@ -176,11 +198,12 @@ export function mountContourChallenge(root, { read, save }) {
     const transferResult = migrationResult(last.variant, last.proof.variant, questions.at(-1).variant);
     const recheckResult = run.recheck && migrationResult(run.recheck.attempts, run.recheck.proof, routeRecheck);
     return `<section class="contour-challenge-screen">
-      <p class="eyebrow">等高线与路线选择</p>
+      ${screenHeader('等高线与路线选择')}
       <h1 tabindex="-1" data-challenge-focus>这一关做完了</h1>
       <p class="contour-challenge-hook">你拿到了 <strong>${earned} / 10 分</strong></p>
       <p data-challenge-transfer-result>独立新图 · <strong>${transferResult}</strong></p>
       ${recheckResult ? `<p>枫台新图巩固 · <strong>${recheckResult}</strong></p>` : ''}
+      ${qualifiesForFlower(run) ? feedback.flower() : ''}
       ${run.collected ? `<section class="contour-challenge-reward" aria-label="已收藏">
         <h2>收藏卡 · 读图领队</h2><p>选路先读目的，再找证据。等高线越密坡越陡。算距离要看这张图的比例尺。</p>
       </section>` : '<p>再练一遍，试着在换图之后说明理由。单次拿到 10 分即可收藏。</p>'}
@@ -254,11 +277,13 @@ export function mountContourChallenge(root, { read, save }) {
       stopClock();
       const selected = Number(button.dataset.challengeOption);
       attempts().push(selected);
+      if (currentCorrect()) feedback.correct();
       persist();
       draw('[data-challenge-feedback]');
       return;
     }
     const action = button.dataset.challengeAction;
+    const flowerBefore = qualifiesForFlower(run);
     if (action === 'start') {
       run = makeRun(root.querySelector('[data-challenge-timed]').checked, run?.collected);
       showIntro = false;
@@ -285,6 +310,7 @@ export function mountContourChallenge(root, { read, save }) {
       return;
     }
     draw('[data-challenge-focus]');
+    if (action === 'next' && !flowerBefore && qualifiesForFlower(run)) feedback.celebrate();
     root.querySelector('[data-challenge-focus]').scrollIntoView({ block: 'nearest' });
     startClock();
   }
@@ -331,6 +357,7 @@ export function mountContourChallenge(root, { read, save }) {
   return () => {
     rememberClock();
     live = false;
+    feedback.destroy();
     root.removeEventListener('click', onClick);
     root.removeEventListener('keydown', onKeydown);
     document.removeEventListener('visibilitychange', onVisibility);

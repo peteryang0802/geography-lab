@@ -30,6 +30,7 @@
 .contour-challenge-hook { max-width: 38em; font-size: 1.14rem; font-weight: 670; color: #285e51; }
 .contour-challenge-screen > p:not(.eyebrow) { max-width: 40em; }
 .contour-challenge-head { display: flex; align-items: start; justify-content: space-between; gap: .5rem; }
+.contour-challenge-head-actions { display: flex; align-items: center; flex-shrink: 0; gap: .65rem; }
 .contour-challenge-head [data-challenge-clock] { font-size: .83rem; color: #425f55; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .contour-challenge-timing {
   display: block;
